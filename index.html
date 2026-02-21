@@ -220,6 +220,8 @@ h1,h2,h3{font-family:'Playfair Display',serif;}
 .showdown-box h2{color:var(--gold-light);font-size:1.6rem;text-shadow:0 0 20px rgba(240,201,106,.5);}
 .sd-results{display:flex;flex-direction:column;gap:6px;}
 .sd-player-row{background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.sd-split-row{background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:6px 10px;display:flex;flex-direction:column;gap:3px;}
+.sd-split-label{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:2px;}
 .sd-player-row.winner{border-color:rgba(212,168,67,.4);background:rgba(212,168,67,.08);}
 .sd-player-row.folded{opacity:.5;}
 .sdr-name{font-family:'Playfair Display',serif;font-size:.9rem;color:var(--gold);}
@@ -713,6 +715,7 @@ function shuffle(a){
 }
 
 // =================== WORD FINDER ===================
+// Core: find best word scorable from an arbitrary tile pool
 function bestWord(tiles){
   let best=null, bestScore=-1;
   const numBlanks=tiles.filter(t=>t.l==='_').length;
@@ -745,6 +748,29 @@ function bestWord(tiles){
     if(score>bestScore){bestScore=score; best={word,tiles:wordTiles,score};}
   }
   return best;
+}
+
+// 5-card game: must use EXACTLY 2 hole cards + any number of community cards
+// Enumerate all C(5,2)=10 pairs, try each pair + community, keep best overall
+function bestWord5Card(hand, community){
+  const n = hand.length;
+  let best = null;
+  for(let a=0; a<n-1; a++){
+    for(let b=a+1; b<n; b++){
+      const pool = [hand[a], hand[b], ...community];
+      const result = bestWord(pool);
+      if(result && (!best || result.score > best.score)){
+        best = result;
+        best.usedHole = [hand[a], hand[b]]; // which hole cards were chosen
+      }
+    }
+  }
+  return best;
+}
+
+// Split-pot "in the hand" score: best word from ONLY the 5 hole cards, no community
+function bestWordInHand(hand){
+  return bestWord(hand);
 }
 
 // =================== PEERJS MULTIPLAYER ===================
@@ -1273,7 +1299,7 @@ function handleClientMessage(msg){
     case 'DEAL':
       break;
     case 'SHOWDOWN':
-      showShowdown(msg.results);
+      showShowdown(msg.results, msg.gameType);
       break;
     case 'SHOWDOWN_COUNTDOWN':
       updateShowdownCountdown(msg.secs);
@@ -1734,75 +1760,104 @@ function endHandFold(winner){
   scheduleNextHand();
 }
 
+// Award chips from a half-pot to the set of winners (tied on score)
+// Returns the amount each winner received
+function awardHalfPot(potAmount, winnerResults, seats){
+  const share = Math.floor(potAmount / winnerResults.length);
+  let rem = potAmount - share * winnerResults.length;
+  winnerResults.forEach(r => {
+    const seat = seats.find(s=>s&&s.peerId===r.peerId);
+    const got = share + (rem-- > 0 ? 1 : 0);
+    if(seat) seat.stack += got;
+    r.wonAmount = (r.wonAmount || 0) + got;
+  });
+}
+
 function doShowdown(){
   clearInterval(timerInterval);
-  gs.phase='showdown';
+  gs.phase = 'showdown';
+  const gameType = settings.gameType;
 
-  const activePlayers=gs.seats.filter(s=>s&&!s.folded&&!s.sittingOut);
-  const results=[];
-  let splitPot=settings.gameType==='5cardsplit';
+  const activePlayers = gs.seats.filter(s => s && !s.folded && !s.sittingOut);
+  const results = [];
 
+  // ── Score each active player based on game type ──
   for(const seat of activePlayers){
-    const tiles=[...seat.hand,...gs.community];
-    const best=bestWord(tiles);
+    let boardBest = null, pocketBest = null;
+
+    if(gameType === '2card'){
+      // Pool all tiles (2 hole + up to 5 community)
+      boardBest = bestWord([...seat.hand, ...gs.community]);
+    } else if(gameType === '5card'){
+      // Must use exactly 2 hole cards + any community
+      boardBest = bestWord5Card(seat.hand, gs.community);
+    } else if(gameType === '5cardsplit'){
+      // Board: exactly 2 hole + any community
+      boardBest = bestWord5Card(seat.hand, gs.community);
+      // Pocket: only the 5 hole cards, no community
+      pocketBest = bestWordInHand(seat.hand);
+    }
+
     results.push({
-      name:seat.name, peerId:seat.peerId,
-      word:best?best.word:'', score:best?best.score:0,
-      tiles:best?best.tiles:[], hand:seat.hand, winner:false
+      name: seat.name, peerId: seat.peerId, hand: seat.hand,
+      // Board hand
+      word:  boardBest ? boardBest.word  : '', score:  boardBest ? boardBest.score  : 0,
+      tiles: boardBest ? boardBest.tiles : [],
+      // Pocket hand (5cardsplit only)
+      pocketWord:  pocketBest ? pocketBest.word  : '', pocketScore:  pocketBest ? pocketBest.score  : 0,
+      pocketTiles: pocketBest ? pocketBest.tiles : [],
+      winner: false, wonAmount: 0,
     });
   }
-  // Add folded players
-  gs.seats.forEach(s=>{
-    if(s&&s.folded){
-      results.push({name:s.name,peerId:s.peerId,word:'Folded',score:0,tiles:[],hand:s.hand,winner:false,folded:true});
+
+  // Add folded players (no scoring)
+  gs.seats.forEach(s => {
+    if(s && s.folded){
+      results.push({name:s.name, peerId:s.peerId, word:'Folded', score:0, tiles:[], hand:s.hand,
+                    pocketWord:'', pocketScore:0, pocketTiles:[], winner:false, folded:true, wonAmount:0});
     }
   });
 
-  const activeResults=results.filter(r=>!r.folded);
-  const maxScore=Math.max(...activeResults.map(r=>r.score));
+  const activeResults = results.filter(r => !r.folded);
+  const totalPot = gs.pot;
 
-  if(splitPot){
-    // Split pot: best word gets half, worst word (among active) gets half
-    const sorted=[...activeResults].sort((a,b)=>b.score-a.score);
-    const winners=[sorted[0]];
-    const losers=[sorted[sorted.length-1]];
-    if(sorted.length>=2){
-      const half=Math.floor(gs.pot/2);
-      const rem=gs.pot-half;
-      winners.forEach(w=>{
-        const seat=gs.seats.find(s=>s&&s.peerId===w.peerId);
-        if(seat){seat.stack+=half; w.wonAmount=half;}
-        w.winner=true; w.splitTag='High Half';
-      });
-      losers.forEach(l=>{
-        const seat=gs.seats.find(s=>s&&s.peerId===l.peerId);
-        if(seat){seat.stack+=rem; l.wonAmount=rem;}
-        l.winner=true; l.splitTag='Low Half';
-      });
-      if(winners[0].peerId===losers[0].peerId){
-        // same player wins both
-        const seat=gs.seats.find(s=>s&&s.peerId===winners[0].peerId);
-        if(seat) seat.stack+=rem; // they got both halves already but double-counted
-      }
+  if(gameType === '5cardsplit' && activeResults.length >= 1){
+    // Split pot into two equal halves: board half + pocket half
+    const halfPot  = Math.floor(totalPot / 2);
+    const otherHalf = totalPot - halfPot; // handles odd chips
+
+    if(activeResults.length === 1){
+      // Only one player left — wins everything
+      const r = activeResults[0];
+      const seat = gs.seats.find(s=>s&&s.peerId===r.peerId);
+      if(seat) seat.stack += totalPot;
+      r.wonAmount = totalPot; r.winner = true;
+      r.boardTag = 'Board Winner'; r.pocketTag = 'Pocket Winner';
     } else {
-      const seat=gs.seats.find(s=>s&&s.peerId===sorted[0].peerId);
-      if(seat){seat.stack+=gs.pot; sorted[0].wonAmount=gs.pot; sorted[0].winner=true;}
+      // Board half: highest board score wins; ties split that half
+      const maxBoard = Math.max(...activeResults.map(r => r.score));
+      const boardWinners = activeResults.filter(r => r.score === maxBoard);
+      boardWinners.forEach(r => { r.winner = true; r.boardTag = 'Board🏆'; });
+      awardHalfPot(halfPot, boardWinners, gs.seats);
+
+      // Pocket half: highest pocket score wins; ties split that half
+      const maxPocket = Math.max(...activeResults.map(r => r.pocketScore));
+      const pocketWinners = activeResults.filter(r => r.pocketScore === maxPocket);
+      pocketWinners.forEach(r => { r.winner = true; r.pocketTag = 'Pocket🏆'; });
+      awardHalfPot(otherHalf, pocketWinners, gs.seats);
     }
   } else {
-    const winners=activeResults.filter(r=>r.score===maxScore);
-    const share=Math.floor(gs.pot/winners.length);
-    let rem=gs.pot-share*winners.length;
-    winners.forEach(w=>{
-      const seat=gs.seats.find(s=>s&&s.peerId===w.peerId);
-      if(seat){seat.stack+=share+(rem-->0?1:0); w.wonAmount=share;}
-      w.winner=true;
-    });
+    // 2card or 5card: highest board score wins; ties split the pot
+    const maxScore = Math.max(...activeResults.map(r => r.score));
+    const winners  = activeResults.filter(r => r.score === maxScore);
+    awardHalfPot(totalPot, winners, gs.seats);
+    winners.forEach(r => { r.winner = true; });
   }
 
-  gs.pot=0;
+  gs.pot = 0;
   broadcastStateToAll();
-  hostBroadcast({type:'SHOWDOWN', results});
-  handleClientMessage({type:'SHOWDOWN', results});
+  hostBroadcast({type:'SHOWDOWN', results, gameType});
+  handleClientMessage({type:'SHOWDOWN', results, gameType});
   scheduleNextHand();
 }
 
@@ -2073,22 +2128,52 @@ function updateGameUI(){
         if(t.l!=='?') el.innerHTML=`<span class="tile-letter">${t.l}</span><span class="tile-points">${t.p}</span>`;
         holeEl.appendChild(el);
       }
-      // Best word hint
-      if(gs.community.length>0 && mySeat.hand && mySeat.hand.length>0 && mySeat.hand[0].l!=='?'){
-        const allTiles=[...mySeat.hand,...gs.community];
-        const best=bestWord(allTiles);
-        const bwEl=document.getElementById('my-best-word');
-        if(best){
+      // Best word hint — varies by game type
+      const hasRealHand = mySeat.hand && mySeat.hand.length>0 && mySeat.hand[0].l!=='?';
+      const bwEl = document.getElementById('my-best-word');
+      if(hasRealHand){
+        const gt = settings.gameType;
+        let boardBest = null, pocketBest = null;
+
+        if(gt === '2card'){
+          if(gs.community.length > 0)
+            boardBest = bestWord([...mySeat.hand, ...gs.community]);
+        } else if(gt === '5card'){
+          if(gs.community.length > 0)
+            boardBest = bestWord5Card(mySeat.hand, gs.community);
+        } else if(gt === '5cardsplit'){
+          if(gs.community.length > 0)
+            boardBest = bestWord5Card(mySeat.hand, gs.community);
+          pocketBest = bestWordInHand(mySeat.hand);
+        }
+
+        if(boardBest || pocketBest){
           bwEl.classList.add('show');
-          const tilesEl=document.getElementById('mbw-tiles');
-          tilesEl.innerHTML='';
-          for(const t of best.tiles){
-            tilesEl.innerHTML+=`<div class="mbw-tile"><span class="tile-letter">${t.l}</span><span class="tile-points">${t.p}</span></div>`;
+          const tilesEl = document.getElementById('mbw-tiles');
+          tilesEl.innerHTML = '';
+
+          if(gt === '5cardsplit' && pocketBest){
+            // Show both: board and pocket
+            const bLabel = boardBest
+              ? `<span style="font-size:.6rem;opacity:.5">Board: </span>"${escHtml(boardBest.word)}" ${boardBest.score}pts`
+              : '<span style="opacity:.4">Board: —</span>';
+            const pLabel = `<span style="font-size:.6rem;opacity:.5">Pocket: </span>"${escHtml(pocketBest.word)}" ${pocketBest.score}pts`;
+            document.getElementById('mbw-score').innerHTML = bLabel + ' &nbsp;|&nbsp; ' + pLabel;
+            // Show pocket tiles (more relevant during betting)
+            for(const t of (boardBest||pocketBest).tiles){
+              tilesEl.innerHTML+=`<div class="mbw-tile"><span class="tile-letter">${t.l}</span><span class="tile-points">${t.p}</span></div>`;
+            }
+          } else if(boardBest){
+            for(const t of boardBest.tiles){
+              tilesEl.innerHTML+=`<div class="mbw-tile"><span class="tile-letter">${t.l}</span><span class="tile-points">${t.p}</span></div>`;
+            }
+            document.getElementById('mbw-score').textContent=`"${boardBest.word}" — ${boardBest.score} pts`;
           }
-          document.getElementById('mbw-score').textContent=`"${best.word}" — ${best.score} pts`;
         } else {
           bwEl.classList.remove('show');
         }
+      } else {
+        if(bwEl) bwEl.classList.remove('show');
       }
     }
   }
@@ -2240,46 +2325,109 @@ function disableActions(){
 }
 
 // =================== SHOWDOWN UI ===================
-function showShowdown(results){
-  const box=document.getElementById('sd-results');
-  box.innerHTML='';
-  const title=document.getElementById('sd-title');
+function tileRowHtml(tiles){
+  if(!tiles||!tiles.length) return '';
+  return tiles.map(t=>`<div class="sdr-tile"><span class="tsl">${escHtml(t.l||'?')}</span><span class="tsp">${t.p||''}</span></div>`).join('');
+}
 
-  const winners=results.filter(r=>r.winner);
-  if(results[0]&&results[0].byFold){
-    title.textContent='Opponent Folds!';
+function showShowdown(results, gameType){
+  const box   = document.getElementById('sd-results');
+  const title = document.getElementById('sd-title');
+  box.innerHTML = '';
+  // Infer gameType from current settings if not passed (clients receive it in the msg)
+  const gt = gameType || settings.gameType || '2card';
+
+  if(results[0] && results[0].byFold){
+    title.textContent = 'Opponent Folds!';
+  } else if(gt === '5cardsplit'){
+    title.textContent = 'Showdown — Split Pot';
   } else {
-    title.textContent='Showdown!';
+    title.textContent = 'Showdown!';
   }
 
-  results.forEach(r=>{
-    let tilesHtml='';
-    if(r.tiles&&r.tiles.length>0){
-      tilesHtml=r.tiles.map(t=>`<div class="sdr-tile"><span class="tsl">${t.l}</span><span class="tsp">${t.p}</span></div>`).join('');
-    }
-    let extra='';
-    if(r.winner) extra=r.byFold?'<span class="win">Wins pot! 🎉</span>':`<span class="win">Wins ${r.wonAmount||0}! 🎉</span>`;
-    if(r.splitTag) extra=`<span class="win">${r.splitTag}: +${r.wonAmount||0}</span>`;
-    if(r.folded) extra='<span style="color:rgba(255,255,255,.3)">Folded</span>';
-    const handHtml=r.hand&&r.hand.length>0?r.hand.map(t=>`<div class="sdr-tile"><span class="tsl">${t.l==='?'?'?':t.l}</span><span class="tsp">${t.l==='?'?'':t.p}</span></div>`).join(''):'';
+  results.forEach(r => {
+    const isWinner  = r.winner && !r.folded;
+    const isFolded  = r.folded;
 
-    box.innerHTML+=`
-      <div class="sd-player-row ${r.winner?'winner':''} ${r.folded?'folded':''}">
-        <div>
-          <div class="sdr-name">${escHtml(r.name)}</div>
-          <div class="sdr-word">${r.word?'"'+r.word+'"':''}</div>
-          <div style="display:flex;gap:4px;margin-top:4px">${handHtml}</div>
-        </div>
-        <div style="text-align:right">
-          <div class="sdr-score">${r.score>0?r.score+' pts':''}</div>
-          <div style="display:flex;gap:3px;justify-content:flex-end;margin-top:4px">${tilesHtml}</div>
-          <div style="font-size:.8rem;margin-top:4px">${extra}</div>
-        </div>
-      </div>`;
+    // Hand tiles display (hole cards)
+    const handHtml = (r.hand||[]).map(t =>
+      `<div class="sdr-tile"><span class="tsl">${t.l==='?'?'?':escHtml(t.l)}</span><span class="tsp">${t.l==='?'?'':t.p}</span></div>`
+    ).join('');
+
+    if(isFolded){
+      box.innerHTML += `
+        <div class="sd-player-row folded">
+          <div><div class="sdr-name">${escHtml(r.name)}</div></div>
+          <div style="text-align:right"><span style="color:rgba(255,255,255,.3)">Folded</span></div>
+        </div>`;
+      return;
+    }
+
+    if(r.byFold){
+      // Won by everyone folding
+      box.innerHTML += `
+        <div class="sd-player-row winner">
+          <div>
+            <div class="sdr-name">${escHtml(r.name)}</div>
+            <div style="display:flex;gap:3px;margin-top:4px;">${handHtml}</div>
+          </div>
+          <div style="text-align:right"><span class="win">Wins pot! 🎉 +${r.wonAmount||0}</span></div>
+        </div>`;
+      return;
+    }
+
+    if(gt === '5cardsplit'){
+      // Two rows per player: Board hand + Pocket hand
+      const boardWin   = r.boardTag  ? `<span class="win" style="font-size:.75rem;">${r.boardTag}</span>`  : '';
+      const pocketWin  = r.pocketTag ? `<span class="win" style="font-size:.75rem;">${r.pocketTag}</span>` : '';
+      const totalWon   = r.wonAmount > 0 ? `<div style="color:var(--gold);font-weight:700;font-size:.85rem;margin-top:4px;">+${r.wonAmount} chips</div>` : '';
+
+      box.innerHTML += `
+        <div class="sd-player-row ${isWinner?'winner':''}" style="flex-direction:column;align-items:stretch;gap:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div class="sdr-name">${escHtml(r.name)}</div>
+            ${totalWon}
+          </div>
+          <div style="display:flex;gap:3px;margin-bottom:2px;">${handHtml}</div>
+          <div class="sd-split-row">
+            <div class="sd-split-label">🃏 Board <span style="font-size:.62rem;opacity:.6">(2 hole + community)</span></div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <div style="display:flex;gap:2px;">${tileRowHtml(r.tiles)}</div>
+              <span class="sdr-word">${r.word?'"'+escHtml(r.word)+'"':''}</span>
+              <span class="sdr-score">${r.score>0?r.score+' pts':''}</span>
+              ${boardWin}
+            </div>
+          </div>
+          <div class="sd-split-row">
+            <div class="sd-split-label">✋ Pocket <span style="font-size:.62rem;opacity:.6">(hole cards only)</span></div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <div style="display:flex;gap:2px;">${tileRowHtml(r.pocketTiles)}</div>
+              <span class="sdr-word">${r.pocketWord?'"'+escHtml(r.pocketWord)+'"':''}</span>
+              <span class="sdr-score">${r.pocketScore>0?r.pocketScore+' pts':''}</span>
+              ${pocketWin}
+            </div>
+          </div>
+        </div>`;
+    } else {
+      // 2card or 5card: single result row per player
+      const winText = isWinner ? `<span class="win">+${r.wonAmount||0} 🎉</span>` : '';
+      box.innerHTML += `
+        <div class="sd-player-row ${isWinner?'winner':''}">
+          <div>
+            <div class="sdr-name">${escHtml(r.name)}</div>
+            <div style="display:flex;gap:3px;margin-top:4px;">${handHtml}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="display:flex;gap:2px;justify-content:flex-end;flex-wrap:wrap;">${tileRowHtml(r.tiles)}</div>
+            <div class="sdr-word" style="margin-top:2px;">${r.word?'"'+escHtml(r.word)+'"':''}</div>
+            <div class="sdr-score">${r.score>0?r.score+' pts':''}</div>
+            <div style="margin-top:4px;">${winText}</div>
+          </div>
+        </div>`;
+    }
   });
 
   document.getElementById('showdown-overlay').classList.add('show');
-  // phase stays 'showdown' — scheduleNextHand drives transition
 }
 
 function showGameOver(reason, standings){
