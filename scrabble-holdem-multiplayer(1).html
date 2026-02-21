@@ -1,0 +1,1899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scrabble Hold'em</title>
+<!-- PeerJS loaded on demand when a game is created or joined -->
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+<style>
+:root {
+  --felt: #1a3a2a; --felt-light: #234d38; --felt-dark: #0f2318;
+  --wood: #8B5E3C; --wood-light: #c4874f; --wood-dark: #5c3a1e;
+  --tile-bg: #f5e6c8; --tile-shadow: #b8935a; --tile-text: #2c1a08;
+  --gold: #d4a843; --gold-light: #f0c96a;
+  --white: #f0ede6; --cream: #faf6ee;
+  --danger: #c0392b; --safe: #27ae60; --info: #2980b9;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Crimson Pro',serif;background:radial-gradient(ellipse at center,#0d1f15 0%,#060e0a 100%);min-height:100vh;color:var(--white);overflow-x:hidden;}
+h1,h2,h3{font-family:'Playfair Display',serif;}
+
+/* ===== SCREENS ===== */
+.screen{display:none;min-height:100vh;}
+.screen.active{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 16px;}
+
+/* ===== LANDING ===== */
+#screen-landing .brand h1{font-size:clamp(2.2rem,6vw,4rem);color:var(--gold-light);text-shadow:0 2px 20px rgba(212,168,67,.5);letter-spacing:.06em;text-align:center;}
+#screen-landing .brand p{color:rgba(255,255,255,.45);font-style:italic;text-align:center;margin-top:6px;}
+.landing-cards{display:flex;gap:16px;margin-top:36px;flex-wrap:wrap;justify-content:center;}
+.landing-card{background:rgba(255,255,255,.04);border:1px solid rgba(212,168,67,.25);border-radius:16px;padding:28px 32px;width:220px;text-align:center;cursor:pointer;transition:all .2s;}
+.landing-card:hover{background:rgba(212,168,67,.1);border-color:var(--gold);transform:translateY(-4px);box-shadow:0 12px 30px rgba(0,0,0,.4);}
+.landing-card .lc-icon{font-size:2.4rem;margin-bottom:12px;}
+.landing-card h3{color:var(--gold-light);font-size:1.1rem;margin-bottom:6px;}
+.landing-card p{color:rgba(255,255,255,.45);font-size:.82rem;}
+
+/* ===== FORMS ===== */
+.form-box{background:rgba(0,0,0,.35);border:1px solid rgba(212,168,67,.2);border-radius:20px;padding:32px 36px;width:100%;max-width:520px;}
+.form-box h2{color:var(--gold-light);font-size:1.5rem;margin-bottom:20px;text-align:center;}
+.form-group{margin-bottom:16px;}
+.form-group label{display:block;font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.5);margin-bottom:6px;}
+.form-group input,.form-group select{width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:10px 14px;color:var(--white);font-family:'Crimson Pro',serif;font-size:1rem;outline:none;transition:border .15s;}
+.form-group input:focus,.form-group select:focus{border-color:var(--gold);}
+.form-group select option{background:#1a3a2a;color:var(--white);}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.game-code-display{font-family:'Playfair Display',serif;font-size:2.8rem;letter-spacing:.25em;color:var(--gold-light);text-align:center;padding:14px;background:rgba(0,0,0,.3);border-radius:10px;border:2px dashed rgba(212,168,67,.4);margin:10px 0;}
+
+/* ===== BUTTONS ===== */
+.btn{font-family:'Playfair Display',serif;font-size:.88rem;letter-spacing:.08em;padding:10px 24px;border-radius:6px;border:none;cursor:pointer;transition:all .15s;text-transform:uppercase;}
+.btn:disabled{opacity:.35;cursor:default;}
+.btn:not(:disabled):hover{transform:translateY(-1px);}
+.btn-gold{background:var(--gold);color:var(--felt-dark);font-weight:700;}
+.btn-gold:not(:disabled):hover{background:var(--gold-light);}
+.btn-outline{background:transparent;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.7);}
+.btn-outline:not(:disabled):hover{border-color:var(--gold);color:var(--gold);}
+.btn-danger{background:#5c3333;color:#ffb3b3;border:1px solid #8c4444;}
+.btn-danger:not(:disabled):hover{background:#7a3f3f;}
+.btn-safe{background:#2d5a3d;color:#9ef5c0;border:1px solid #3d7a52;}
+.btn-safe:not(:disabled):hover{background:#3a7050;}
+.btn-info{background:#2a4060;color:#9bceff;border:1px solid #3a5f8a;}
+.btn-info:not(:disabled):hover{background:#355070;}
+.btn-warn{background:#5a4a1a;color:var(--gold-light);border:1px solid #8a7025;}
+.btn-warn:not(:disabled):hover{background:#7a6420;}
+.btn-full{width:100%;margin-top:8px;}
+
+/* ===== LOBBY ===== */
+#screen-lobby{padding:16px;}
+#screen-lobby .lobby-wrap{max-width:980px;width:100%;margin:0 auto;}
+.lobby-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px;flex-wrap:wrap;}
+.lobby-header h2{color:var(--gold-light);font-size:1.4rem;}
+.lobby-info{display:flex;gap:16px;align-items:center;flex-wrap:wrap;}
+.lobby-badge{background:rgba(0,0,0,.3);border:1px solid rgba(212,168,67,.25);border-radius:6px;padding:4px 12px;font-size:.8rem;color:rgba(255,255,255,.6);}
+.lobby-badge span{color:var(--gold);font-weight:600;}
+.btn-invite{display:flex;align-items:center;gap:8px;background:rgba(212,168,67,.15);border:1.5px solid var(--gold);border-radius:8px;padding:6px 14px;cursor:pointer;transition:all .18s;font-family:'Crimson Pro',serif;}
+.btn-invite:hover{background:rgba(212,168,67,.28);transform:translateY(-1px);box-shadow:0 4px 14px rgba(212,168,67,.25);}
+.btn-invite:active{transform:translateY(0);}
+.invite-code{font-family:'Playfair Display',serif;font-size:1.25rem;font-weight:700;letter-spacing:.22em;color:var(--gold-light);line-height:1;}
+.invite-sep{color:rgba(255,255,255,.25);font-size:.9rem;}
+.invite-label{font-size:.82rem;color:rgba(255,255,255,.75);white-space:nowrap;letter-spacing:.03em;}
+.invite-code-big{font-family:'Playfair Display',serif;font-size:3rem;font-weight:900;letter-spacing:.3em;color:var(--gold-light);text-align:center;text-shadow:0 0 20px rgba(212,168,67,.4);padding:12px 0 4px;}
+
+/* SEATS TABLE */
+.seats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px;}
+.seat-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:14px;text-align:center;transition:all .2s;position:relative;}
+.seat-card.occupied{border-color:rgba(212,168,67,.3);background:rgba(212,168,67,.05);}
+.seat-card.mine{border-color:var(--gold);background:rgba(212,168,67,.12);box-shadow:0 0 12px rgba(212,168,67,.2);}
+.seat-card.sitting-out{opacity:.6;}
+.seat-number{font-size:.65rem;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.3);margin-bottom:6px;}
+.seat-avatar{font-size:1.6rem;margin-bottom:6px;}
+.seat-name{font-family:'Playfair Display',serif;font-size:.95rem;color:var(--white);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.seat-chips{font-size:.8rem;color:var(--gold);margin-bottom:8px;}
+.seat-status{font-size:.7rem;color:rgba(255,255,255,.4);font-style:italic;}
+.seat-empty .seat-name{color:rgba(255,255,255,.25);font-style:italic;}
+.seat-empty .seat-avatar{opacity:.3;}
+.dealer-chip{position:absolute;top:8px;right:8px;background:var(--wood);color:var(--white);font-size:.6rem;font-weight:700;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;}
+
+/* OBSERVERS */
+.observers-section{margin-bottom:16px;}
+.observers-section h4{font-size:.75rem;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.35);margin-bottom:8px;}
+.observers-list{display:flex;gap:8px;flex-wrap:wrap;}
+.observer-chip{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.78rem;color:rgba(255,255,255,.5);}
+
+/* CHAT */
+.lobby-bottom{display:grid;grid-template-columns:1fr 300px;gap:16px;align-items:start;}
+.chat-box{background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;}
+.chat-box h4{font-size:.75rem;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.35);margin-bottom:8px;}
+.chat-messages{height:120px;overflow-y:auto;margin-bottom:8px;display:flex;flex-direction:column;gap:4px;}
+.chat-msg{font-size:.82rem;color:rgba(255,255,255,.6);line-height:1.3;}
+.chat-msg .chat-from{color:var(--gold);font-weight:600;}
+.chat-input-row{display:flex;gap:6px;}
+.chat-input-row input{flex:1;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:7px 10px;color:var(--white);font-family:'Crimson Pro',serif;font-size:.88rem;outline:none;}
+.chat-input-row input:focus{border-color:var(--gold);}
+
+/* LOBBY ACTION PANEL */
+.lobby-actions{background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;}
+.lobby-actions h4{font-size:.75rem;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.35);}
+.status-pill{padding:8px 12px;border-radius:8px;font-size:.82rem;text-align:center;}
+.status-pill.observer{background:rgba(41,128,185,.15);border:1px solid rgba(41,128,185,.3);color:#9bceff;}
+.status-pill.seated{background:rgba(212,168,67,.15);border:1px solid rgba(212,168,67,.3);color:var(--gold-light);}
+.status-pill.sitting-out{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.5);}
+
+/* ===== GAME TABLE ===== */
+#screen-game{padding:12px;align-items:stretch;}
+#screen-game .game-wrap{max-width:1100px;width:100%;margin:0 auto;display:grid;grid-template-rows:auto 1fr auto;gap:10px;height:100vh;padding:10px 0;}
+
+.game-top-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+.game-top-bar .gtb-title{font-family:'Playfair Display',serif;color:var(--gold-light);font-size:1rem;}
+.game-top-bar .gtb-code{font-size:.75rem;color:rgba(255,255,255,.35);letter-spacing:.1em;}
+
+/* ROUND PIPS */
+.round-indicator{display:flex;gap:12px;align-items:center;}
+.round-pip{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:3px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.3);transition:all .3s;}
+.round-pip.active{background:rgba(212,168,67,.25);color:var(--gold-light);box-shadow:0 0 8px rgba(212,168,67,.3);}
+.round-pip.done{color:rgba(255,255,255,.5);background:rgba(255,255,255,.08);}
+
+/* POKER TABLE */
+.poker-table-container{position:relative;flex:1;display:flex;align-items:center;justify-content:center;}
+.poker-table{background:radial-gradient(ellipse at 50% 40%,var(--felt-light) 0%,var(--felt) 50%,var(--felt-dark) 100%);border-radius:120px;border:10px solid var(--wood);box-shadow:0 0 0 3px var(--wood-light),0 0 0 5px var(--wood-dark),0 20px 60px rgba(0,0,0,.8),inset 0 2px 20px rgba(0,0,0,.3);padding:20px 32px;width:100%;max-width:860px;position:relative;}
+
+/* SEATS AROUND TABLE */
+.table-seats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;}
+.table-seat{background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:8px 10px;text-align:center;position:relative;min-height:80px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;}
+.table-seat.active-turn{border-color:var(--gold);box-shadow:0 0 10px rgba(212,168,67,.4);animation:pulse-seat .8s ease-in-out infinite alternate;}
+@keyframes pulse-seat{from{box-shadow:0 0 8px rgba(212,168,67,.3);}to{box-shadow:0 0 18px rgba(212,168,67,.6);}}
+.table-seat.folded{opacity:.4;}
+.table-seat.sitting-out{opacity:.5;}
+.table-seat.empty{opacity:.2;}
+.ts-name{font-size:.72rem;color:rgba(255,255,255,.7);font-family:'Playfair Display',serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+.ts-stack{font-size:.68rem;color:var(--gold);}
+.ts-bet{font-size:.65rem;color:rgba(255,255,255,.5);font-style:italic;}
+.ts-dealer{position:absolute;top:4px;right:4px;background:var(--wood);color:#fff;font-size:.55rem;border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;}
+.ts-timer{position:absolute;bottom:4px;left:4px;right:4px;height:3px;background:rgba(255,255,255,.1);border-radius:2px;}
+.ts-timer-bar{height:100%;background:var(--gold);border-radius:2px;transition:width .5s linear;}
+.ts-timer-bar.urgent{background:var(--danger);}
+
+/* HOLE TILES */
+.ts-hole-tiles{display:flex;gap:3px;justify-content:center;}
+.ts-tile{width:24px;height:28px;background:repeating-linear-gradient(45deg,#1a5c38,#1a5c38 3px,#1e6b42 3px,#1e6b42 6px);border-radius:3px;border:1px solid rgba(255,255,255,.1);}
+.ts-tile.face-up{background:var(--tile-bg);border-color:rgba(180,140,80,.5);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;}
+.ts-tile.face-up .tsl{font-family:'Playfair Display',serif;font-size:.7rem;font-weight:700;color:var(--tile-text);line-height:1;}
+.ts-tile.face-up .tsp{font-size:.42rem;font-weight:700;color:var(--tile-text);opacity:.7;position:absolute;bottom:2px;right:3px;font-family:'Playfair Display',serif;}
+
+/* CENTER of table */
+.table-center{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 0;}
+.community-label{font-size:.65rem;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.3);}
+.community-row{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;}
+.pot-display{display:inline-block;background:rgba(0,0,0,.35);border:1px solid rgba(212,168,67,.3);border-radius:20px;padding:4px 16px;font-family:'Playfair Display',serif;color:var(--gold-light);font-size:.85rem;}
+
+/* TILE */
+.tile{width:48px;height:56px;background:var(--tile-bg);border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;box-shadow:0 3px 0 var(--tile-shadow),0 5px 8px rgba(0,0,0,.4);border:1.5px solid rgba(180,140,80,.6);}
+.tile.face-down{background:repeating-linear-gradient(45deg,#1a5c38,#1a5c38 4px,#1e6b42 4px,#1e6b42 8px);border-color:rgba(255,255,255,.1);}
+.tile.face-down::after{content:'?';font-family:'Playfair Display',serif;font-size:1.3rem;color:rgba(255,255,255,.3);}
+.tile.placeholder{background:rgba(255,255,255,.04);border:2px dashed rgba(255,255,255,.15);box-shadow:none;}
+.tile-letter{font-family:'Playfair Display',serif;font-size:1.4rem;font-weight:700;color:var(--tile-text);line-height:1;}
+.tile-points{font-size:.55rem;font-weight:700;color:var(--tile-text);opacity:.7;position:absolute;bottom:3px;right:5px;font-family:'Playfair Display',serif;}
+
+/* MY HAND PANEL */
+.my-hand-panel{background:rgba(0,0,0,.35);border:1px solid rgba(212,168,67,.2);border-radius:14px;padding:14px 20px;display:flex;flex-direction:column;gap:10px;}
+.mhp-top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+.mhp-tiles{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.my-best-word{background:rgba(0,0,0,.3);border:1px solid rgba(212,168,67,.2);border-radius:8px;padding:8px 14px;display:none;}
+.my-best-word.show{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.mbw-label{font-size:.65rem;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.35);}
+.mbw-tiles{display:flex;gap:4px;}
+.mbw-tile{width:34px;height:40px;background:var(--tile-bg);border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 2px 0 var(--tile-shadow);border:1px solid rgba(180,140,80,.5);position:relative;}
+.mbw-tile .tile-letter{font-size:1rem;}
+.mbw-tile .tile-points{font-size:.45rem;}
+.mbw-score{font-family:'Playfair Display',serif;color:var(--gold-light);font-size:.95rem;white-space:nowrap;}
+
+/* ACTION CONTROLS */
+.action-panel{display:flex;flex-direction:column;gap:10px;align-items:center;}
+.action-status{text-align:center;font-style:italic;font-size:.88rem;color:rgba(255,255,255,.55);min-height:22px;}
+.action-status.highlight{color:var(--gold-light);font-style:normal;}
+.raise-row{display:flex;align-items:center;gap:8px;}
+.raise-row input[type=range]{width:130px;accent-color:var(--gold);}
+.raise-amount{font-family:'Playfair Display',serif;color:var(--gold);font-size:.85rem;min-width:44px;text-align:center;}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}
+
+/* SHOWDOWN */
+.showdown-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:200;align-items:center;justify-content:center;padding:16px;}
+.showdown-overlay.show{display:flex;}
+.showdown-box{background:radial-gradient(ellipse at 50% 30%,#1e3d28,#0d1f15);border:10px solid var(--wood);outline:3px solid var(--wood-light);border-radius:50px;padding:22px 26px;max-width:640px;width:100%;text-align:center;box-shadow:0 0 60px rgba(0,0,0,.9),0 0 30px rgba(212,168,67,.1);animation:popIn .35s cubic-bezier(.175,.885,.32,1.275);display:flex;flex-direction:column;gap:8px;max-height:90vh;overflow-y:auto;}
+@keyframes popIn{from{transform:scale(.75);opacity:0;}to{transform:scale(1);opacity:1;}}
+.showdown-box h2{color:var(--gold-light);font-size:1.6rem;text-shadow:0 0 20px rgba(240,201,106,.5);}
+.sd-results{display:flex;flex-direction:column;gap:6px;}
+.sd-player-row{background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.sd-player-row.winner{border-color:rgba(212,168,67,.4);background:rgba(212,168,67,.08);}
+.sd-player-row.folded{opacity:.5;}
+.sdr-name{font-family:'Playfair Display',serif;font-size:.9rem;color:var(--gold);}
+.sdr-word{font-size:.82rem;color:rgba(255,255,255,.6);}
+.sdr-score{font-family:'Playfair Display',serif;font-size:1rem;color:var(--gold-light);}
+.sdr-tiles{display:flex;gap:3px;}
+.sdr-tile{width:26px;height:30px;background:var(--tile-bg);border-radius:3px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 1px 0 var(--tile-shadow);border:1px solid rgba(180,140,80,.4);position:relative;}
+.sdr-tile .tsl{font-family:'Playfair Display',serif;font-size:.72rem;font-weight:700;color:var(--tile-text);}
+.sdr-tile .tsp{font-size:.38rem;color:var(--tile-text);opacity:.7;position:absolute;bottom:2px;right:2px;font-family:'Playfair Display',serif;}
+
+/* MODALS */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:150;align-items:center;justify-content:center;padding:16px;}
+.modal-overlay.show{display:flex;}
+.modal-box{background:radial-gradient(ellipse at 50% 30%,#1e3d28,#0d1f15);border:2px solid rgba(212,168,67,.3);border-radius:20px;padding:26px 30px;max-width:380px;width:100%;text-align:center;}
+.modal-box h3{color:var(--gold-light);font-size:1.2rem;margin-bottom:16px;}
+
+/* TOAST */
+.toast-container{position:fixed;top:20px;right:20px;z-index:300;display:flex;flex-direction:column;gap:8px;}
+.toast{background:rgba(0,0,0,.85);border:1px solid rgba(212,168,67,.3);border-radius:8px;padding:10px 16px;font-size:.85rem;color:var(--white);animation:toastIn .25s ease;min-width:220px;max-width:320px;}
+.toast.info{border-color:rgba(41,128,185,.4);}
+.toast.success{border-color:rgba(39,174,96,.4);color:#9ef5c0;}
+.toast.error{border-color:rgba(192,57,43,.4);color:#ffb3b3;}
+@keyframes toastIn{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:translateX(0);}}
+
+/* CONNECTING */
+#screen-connecting{text-align:center;}
+#screen-connecting .conn-spin{width:48px;height:48px;border:3px solid rgba(212,168,67,.2);border-top-color:var(--gold);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 16px;}
+#screen-connecting #btn-cancel-connect{margin-top:16px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* UTILS */
+.divider{height:1px;background:linear-gradient(to right,transparent,rgba(255,255,255,.1),transparent);margin:8px 0;}
+.text-gold{color:var(--gold);}
+.text-muted{color:rgba(255,255,255,.4);}
+.win{color:#5df0a0;} .lose{color:#f05d5d;} .tie{color:var(--gold-light);}
+
+@media(max-width:600px){
+  .poker-table{border-radius:60px;padding:14px 16px;}
+  .table-seats{grid-template-columns:repeat(2,1fr);}
+  .form-row{grid-template-columns:1fr;}
+  .lobby-bottom{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<div class="toast-container" id="toast-container"></div>
+
+<!-- LANDING -->
+<div class="screen active" id="screen-landing">
+  <div class="brand">
+    <h1>Scrabble Hold'em</h1>
+    <p>Poker structure &bull; Scrabble tiles &bull; Words win pots</p>
+  </div>
+  <div class="landing-cards">
+    <div class="landing-card" onclick="showCreate()">
+      <div class="lc-icon">🃏</div>
+      <h3>Create Game</h3>
+      <p>Set up a new table and invite friends</p>
+    </div>
+    <div class="landing-card" onclick="showJoin()">
+      <div class="lc-icon">🔑</div>
+      <h3>Join Game</h3>
+      <p>Enter a 5-digit code to join a table</p>
+    </div>
+  </div>
+</div>
+
+<!-- CREATE GAME -->
+<div class="screen" id="screen-create">
+  <div class="form-box">
+    <h2>Create a Table</h2>
+    <div class="form-group">
+      <label>Your Name</label>
+      <input type="text" id="create-name" placeholder="Enter your name" maxlength="20">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Max Players</label>
+        <select id="create-maxplayers">
+          <option value="2">2 Players</option>
+          <option value="3">3 Players</option>
+          <option value="4" selected>4 Players</option>
+          <option value="5">5 Players</option>
+          <option value="6">6 Players</option>
+          <option value="7">7 Players</option>
+          <option value="8">8 Players</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Game Type</label>
+        <select id="create-gametype">
+          <option value="2card">A. Two-Card Hold'em</option>
+          <option value="5card">B. Five-Card Hold'em</option>
+          <option value="5cardsplit">C. Five-Card Split Pot</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Chip Buy-In Limit</label>
+        <select id="create-buyin">
+          <option value="500">500 chips</option>
+          <option value="1000" selected>1,000 chips</option>
+          <option value="2000">2,000 chips</option>
+          <option value="5000">5,000 chips</option>
+          <option value="10000">10,000 chips</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Action Timeout (sec)</label>
+        <select id="create-timeout">
+          <option value="15">15 seconds</option>
+          <option value="30" selected>30 seconds</option>
+          <option value="45">45 seconds</option>
+          <option value="60">60 seconds</option>
+          <option value="90">90 seconds</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Small Blind</label>
+        <select id="create-blind">
+          <option value="5">5 / 10</option>
+          <option value="10" selected>10 / 20</option>
+          <option value="25">25 / 50</option>
+          <option value="50">50 / 100</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Min Players to Start</label>
+        <select id="create-minstart">
+          <option value="2" selected>2 Players</option>
+          <option value="3">3 Players</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-gold btn-full" onclick="createGame()">Create Game</button>
+    <button class="btn btn-outline btn-full" onclick="showScreen('screen-landing')" style="margin-top:6px">Back</button>
+  </div>
+</div>
+
+<!-- JOIN GAME -->
+<div class="screen" id="screen-join">
+  <div class="form-box">
+    <h2>Join a Table</h2>
+    <div class="form-group">
+      <label>Your Name</label>
+      <input type="text" id="join-name" placeholder="Enter your name" maxlength="20">
+    </div>
+    <div class="form-group">
+      <label>Game Code</label>
+      <input type="text" id="join-code" placeholder="AB3K7" maxlength="5" autocomplete="off" autocorrect="off"
+        spellcheck="false" style="font-size:1.8rem;letter-spacing:.3em;text-align:center;text-transform:uppercase;"
+        oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+    </div>
+    <button class="btn btn-gold btn-full" onclick="joinGame()">Join Game</button>
+    <button class="btn btn-outline btn-full" onclick="showScreen('screen-landing')" style="margin-top:6px">Back</button>
+  </div>
+</div>
+
+<!-- PEERJS LOAD ERROR BANNER -->
+<!-- CONNECTING -->
+<div class="screen" id="screen-connecting">
+  <div style="text-align:center;max-width:420px;width:100%;">
+    <div class="conn-spin" style="width:48px;height:48px;border:3px solid rgba(212,168,67,.2);border-top-color:var(--gold);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 20px;"></div>
+    <p id="conn-msg" style="color:var(--gold-light);font-size:1.1rem;margin-bottom:8px;">Connecting…</p>
+    <p id="conn-sub" style="color:rgba(255,255,255,.4);font-size:.82rem;margin-bottom:24px;"></p>
+    <button class="btn btn-outline" onclick="cancelConnect()">✕ Cancel</button>
+  </div>
+</div>
+
+<!-- LOBBY -->
+<div class="screen" id="screen-lobby">
+  <div class="lobby-wrap">
+    <div class="lobby-header">
+      <h2>🎲 Game Lobby</h2>
+      <div class="lobby-info">
+        <button class="btn-invite" onclick="sendInviteSMS()" title="Invite a player">
+          <span class="invite-code" id="lobby-code-display">—</span>
+          <span class="invite-sep">·</span>
+          <span class="invite-label">🔗 Invite Player</span>
+        </button>
+        <div class="lobby-badge">Game: <span id="lobby-game-type">—</span></div>
+        <div class="lobby-badge">Blinds: <span id="lobby-blinds">—</span></div>
+        <div class="lobby-badge">Buy-in: <span id="lobby-buyin">—</span></div>
+        <div class="lobby-badge">Timeout: <span id="lobby-timeout">—</span>s</div>
+      </div>
+    </div>
+
+    <div class="seats-grid" id="lobby-seats-grid"></div>
+
+    <div class="observers-section">
+      <h4>Observers</h4>
+      <div class="observers-list" id="lobby-observers-list"><span class="text-muted" style="font-size:.8rem">None</span></div>
+    </div>
+
+    <div class="lobby-bottom">
+      <div class="chat-box">
+        <h4>Table Chat</h4>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input-row">
+          <input type="text" id="chat-input" placeholder="Say something..." maxlength="120" onkeydown="if(event.key==='Enter')sendChat()">
+          <button class="btn btn-outline" style="padding:6px 12px;" onclick="sendChat()">Send</button>
+        </div>
+      </div>
+      <div class="lobby-actions">
+        <h4>Your Status</h4>
+        <div class="status-pill observer" id="my-status-pill">👁 Observing</div>
+        <button class="btn btn-gold" id="btn-sit-down" onclick="showSitDownModal()">Sit Down</button>
+        <button class="btn btn-outline" id="btn-stand-up" onclick="standUp()" style="display:none">Stand Up</button>
+        <button class="btn btn-danger" onclick="leaveGame()">Leave Game</button>
+        <div id="host-start-wrap" style="display:none">
+          <div class="divider"></div>
+          <button class="btn btn-gold btn-full" id="btn-start-game" onclick="hostStartGame()">Start Game</button>
+          <p style="font-size:.72rem;color:rgba(255,255,255,.35);text-align:center;margin-top:4px" id="start-req-msg"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- GAME TABLE -->
+<div class="screen" id="screen-game">
+  <div class="game-wrap">
+    <div class="game-top-bar">
+      <div>
+        <div class="gtb-title">Scrabble Hold'em</div>
+        <div class="gtb-code" id="game-code-bar">Code: —</div>
+      </div>
+      <div class="round-indicator">
+        <div class="round-pip" id="gpip-pre">Pre-Flop</div>
+        <div class="round-pip" id="gpip-flop">Flop</div>
+        <div class="round-pip" id="gpip-turn">Turn</div>
+        <div class="round-pip" id="gpip-river">River</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <div class="pot-display">🪙 Pot: <span id="game-pot">0</span></div>
+        <button class="btn btn-outline" style="padding:5px 10px;font-size:.72rem" onclick="showInGameMenu()">⚙</button>
+      </div>
+    </div>
+
+    <div class="poker-table-container">
+      <div class="poker-table">
+        <div class="table-seats" id="table-seats-top" style="margin-bottom:8px;"></div>
+        <div class="table-center">
+          <div class="community-label">Community Tiles</div>
+          <div class="community-row" id="game-community"></div>
+        </div>
+        <div class="table-seats" id="table-seats-bottom" style="margin-top:8px;"></div>
+      </div>
+    </div>
+
+    <div class="my-hand-panel" id="my-hand-panel" style="display:none">
+      <div class="mhp-top">
+        <div>
+          <div class="mhp-tiles" id="my-hole-tiles"></div>
+        </div>
+        <div class="my-best-word" id="my-best-word">
+          <div>
+            <div class="mbw-label">Best Word</div>
+            <div class="mbw-tiles" id="mbw-tiles"></div>
+          </div>
+          <div class="mbw-score" id="mbw-score"></div>
+        </div>
+      </div>
+      <div class="action-panel" id="action-panel">
+        <div class="action-status" id="action-status">Waiting for game to start...</div>
+        <div class="raise-row" id="action-raise-row" style="display:none">
+          <span style="font-size:.78rem;color:rgba(255,255,255,.45)">Raise:</span>
+          <input type="range" id="raise-slider" min="20" max="500" value="40" step="10">
+          <span class="raise-amount" id="raise-amt">40</span>
+        </div>
+        <div class="btn-row" id="action-btn-row">
+          <button class="btn btn-danger" id="btn-fold" onclick="playerAction('fold')" disabled>Fold</button>
+          <button class="btn btn-info" id="btn-check" onclick="playerAction('check')" disabled>Check</button>
+          <button class="btn btn-safe" id="btn-call" onclick="playerAction('call')" disabled>Call</button>
+          <button class="btn btn-warn" id="btn-raise" onclick="playerAction('raise')" disabled>Raise</button>
+        </div>
+      </div>
+    </div>
+    <div id="observer-note" style="text-align:center;color:rgba(255,255,255,.3);font-style:italic;font-size:.85rem;padding:8px;">You are observing. <span style="color:var(--gold);cursor:pointer" onclick="showSitDownModal()">Sit down to play →</span></div>
+  </div>
+</div>
+
+<!-- SIT DOWN MODAL -->
+<div class="modal-overlay" id="modal-sitdown">
+  <div class="modal-box">
+    <h3>Choose Your Seat</h3>
+    <div class="form-group" id="seat-select-group">
+      <label>Available Seat</label>
+      <select id="seat-select"></select>
+    </div>
+    <div class="form-group">
+      <label>Buy-In Amount</label>
+      <input type="number" id="buyin-amount" value="1000" min="100" step="100">
+      <p style="font-size:.72rem;color:rgba(255,255,255,.35);margin-top:4px;" id="buyin-hint"></p>
+    </div>
+    <button class="btn btn-gold btn-full" onclick="confirmSitDown()">Sit Down</button>
+    <button class="btn btn-outline btn-full" onclick="closeModal('modal-sitdown')" style="margin-top:6px">Cancel</button>
+  </div>
+</div>
+
+<!-- IN-GAME MENU MODAL -->
+<div class="modal-overlay" id="modal-ingame-menu">
+  <div class="modal-box">
+    <h3>Table Options</h3>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <button class="btn btn-outline btn-full" id="btn-sit-out-toggle" onclick="toggleSitOut()">Sit Out Next Hand</button>
+      <button class="btn btn-outline btn-full" onclick="standUpFromGame()">Stand Up (Keep Observing)</button>
+      <button class="btn btn-danger btn-full" onclick="leaveFromGame()">Leave Game</button>
+      <button class="btn btn-outline btn-full" onclick="closeModal('modal-ingame-menu')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- INVITE MODAL -->
+<div class="modal-overlay" id="modal-invite">
+  <div class="modal-box" style="max-width:440px;">
+    <h3 style="text-align:center;margin-bottom:4px;">Invite a Player</h3>
+    <p style="color:rgba(255,255,255,.4);font-size:.78rem;text-align:center;margin-bottom:4px;">Game code</p>
+    <div class="invite-code-big" id="invite-code-big">—</div>
+    <p style="color:rgba(255,255,255,.45);font-size:.84rem;text-align:center;margin:10px 0 14px;line-height:1.6;">
+      Send the link below — recipient taps it and lands<br>directly on the Join screen with the code pre-filled.
+    </p>
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <input id="invite-link-input" readonly
+        style="flex:1;background:rgba(0,0,0,.35);border:1px solid rgba(212,168,67,.35);border-radius:6px;
+               padding:9px 11px;color:var(--gold);font-family:monospace;font-size:.72rem;outline:none;min-width:0;">
+      <button class="btn btn-outline" style="padding:8px 14px;white-space:nowrap;" onclick="copyInviteLink()">Copy</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button class="btn btn-gold btn-full" onclick="shareInvite()">📲 Share / Open Messages</button>
+      <button class="btn btn-outline btn-full" onclick="closeModal('modal-invite')">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- SHOWDOWN OVERLAY -->
+<div class="showdown-overlay" id="showdown-overlay">
+  <div class="showdown-box">
+    <h2 id="sd-title">Showdown!</h2>
+    <div class="sd-results" id="sd-results"></div>
+    <button class="btn btn-gold" style="margin-top:14px;align-self:center;" onclick="closeShowdown()">Continue</button>
+  </div>
+</div>
+
+<script>
+// =================== TILE DATA ===================
+const TILE_DIST=[
+  {l:'A',p:1,n:9},{l:'B',p:3,n:2},{l:'C',p:3,n:2},{l:'D',p:2,n:4},
+  {l:'E',p:1,n:12},{l:'F',p:4,n:2},{l:'G',p:2,n:3},{l:'H',p:4,n:2},
+  {l:'I',p:1,n:9},{l:'J',p:8,n:1},{l:'K',p:5,n:1},{l:'L',p:1,n:4},
+  {l:'M',p:3,n:2},{l:'N',p:1,n:6},{l:'O',p:1,n:8},{l:'P',p:3,n:2},
+  {l:'Q',p:10,n:1},{l:'R',p:1,n:6},{l:'S',p:1,n:4},{l:'T',p:1,n:6},
+  {l:'U',p:1,n:4},{l:'V',p:4,n:2},{l:'W',p:4,n:2},{l:'X',p:8,n:1},
+  {l:'Y',p:4,n:2},{l:'Z',p:10,n:1},{l:'_',p:0,n:2}
+];
+const LETTER_PTS={};
+for(const t of TILE_DIST) LETTER_PTS[t.l]=t.p;
+
+// =================== DICTIONARY ===================
+const WORDS_RAW=`AA AB ABLE ABODE ABOUT ACE ACED ACES ACHE ACHED ACID ACME ACNE ACRE ACT ACTED ACTS ADD ADDS ADMIT ADO ADS
+ADULT AGE AGED AGES AGILE AGO AGREE AHEAD AID AIDE AIDED AIDS AIM AIMED AIMS AIR AIRED AIRY ALARM ALE ALERT
+ALES ALIVE ALONE ALONG ALTER AMBER AMEND AND ANGEL ANGER ANGLE ANKLE ANT ANTE ANTED ANTES ANTI ANTS ANVIL
+ANY APE APED APES APPLY APRON APT ARC ARCS ARE ARGUE ARISE ARM ARMED ARMOR ARMS ARROW ART ARTS ASH ASIDE ASK
+ATE ATLAS ATOP AUDIT AXE AXED AXES AXIS BACK BAD BADE BAG BAGS BAIL BAIT BAKE BAKED BAKER BALE BALES BALL
+BALLS BAN BAND BANE BANG BANK BAR BARE BARK BARN BASE BASH BASIC BASS BATCH BATH BEAD BEAN BEAR BEARD BEAST
+BEAT BED BEE BEER BEG BELL BELLY BELT BEST BET BIAS BIDE BIG BILE BILL BIND BIT BITE BLACK BLADE BLAME
+BLAND BLANK BLAST BLAZE BLEAT BLEND BLESS BLIND BLINK BLOCK BLOOD BLOOM BLOT BLOW BLUE BLUR BOAR BOARD
+BOAST BOB BODE BOG BOLD BOLT BOND BONE BOON BOOST BOOT BORE BORN BOSS BOTH BOUND BOUT BOW BOX BOY BRAG
+BRAIN BRAKE BRAN BRAVE BREAD BREAK BREW BRIDE BRIEF BRIM BRING BROAD BROKE BROOK BROW BROWN BRUSH BUCK BUD
+BUG BUILD BUILT BULK BULL BUN BUNK BUNT BURN BURST BUS BUST BUTT BUZZ CAB CAGE CALF CALL CALM CAME CAN CANE
+CAP CAPE CAR CARE CARRY CART CASE CAST CAT CATCH CAVE CELL CHAIN CHAIR CHALK CHANT CHAP CHAR CHART CHASE CHAT
+CHEAP CHEAT CHEF CHESS CHEST CHEW CHIEF CHILD CHIN CHIP CHOSE CHUNK CITE CLAD CLAIM CLAM CLANG CLAP CLASH
+CLASS CLAY CLEAN CLEAR CLICK CLIFF CLING CLIP CLONE CLOSE CLOTH CLOUD CLOWN CLUB COD CODE COG COIL COIN COLD
+COME COMET COMIC CON CONE COOK COOL COPE CORD CORE CORN COST COUCH COUNT COUP COURT COVER COW CRAB CRACK
+CRAFT CRAM CRANE CRASH CREAM CREEK CREW CRIB CRISP CROP CROSS CROW CRUEL CRUSH CUB CUBE CUFF CULL CUP CURE
+CURL CUT CUTE DAB DAILY DAM DANCE DARE DARK DART DASH DATE DAUNT DEAL DEAN DEBT DECK DECOY DELAY DEN DEPOT
+DEPTH DEW DIAL DID DIG DIKE DIM DIP DIRE DIRT DIRTY DISH DISK DIVE DOCK DODGE DOE DOG DOLE DOLT DOME DONE
+DOOM DOOR DOPE DOSE DOT DOUBT DOVE DOWN DOZEN DRAFT DRAG DRAIN DRAMA DRAPE DRAW DRAWN DREAD DREAM DRESS DROOL
+DROP DROVE DROWN DRUM DUB DUEL DUG DUKE DULL DUNE DUNG DUST DWARF DWELL EAGLE EAR EARN EARTH EASE EAST EAT
+EDGE EDIT EEL EIGHT ELECT ELF ELITE ELK ELM EMIT EMPTY END ENJOY ENTER EQUAL ERA ERROR EVE EVEN EVENT EVIL
+EWE EXAM FABLE FAD FADE FAIL FALL FALSE FAN FANCY FAR FAT FATE FAX FEAST FEE FEEL FEET FELL FEND FERN FETCH
+FEVER FIG FIGHT FILE FILL FILM FIN FIND FINE FIR FIRE FIRM FISH FIST FIT FIVE FIX FIZZY FLAG FLAK FLAME
+FLASH FLAW FLEA FLEE FLEET FLESH FLEW FLIP FLOAT FLOCK FLOOD FLOOR FLOP FLOW FLUFF FOAM FOB FOE FOG FOLD
+FOND FONT FOOD FOOL FOOT FOR FORCE FORE FORGE FORK FORM FORT FOUL FOUND FRAME FRANK FRAY FREE FRESH FROTH
+FROWN FROZE FRY FUEL FULL FUN FUND FUR FUSE GAG GALE GALL GAME GAP GARB GAS GATE GAVE GAZE GEAR GEM GENE
+GIANT GIG GILL GIN GIRD GIRL GIRTH GIVE GIVEN GLAND GLARE GLASS GLEE GLIDE GLINT GLOAT GLOB GLOOM GLOSS
+GLOVE GLOW GLUE GNU GOAD GOAT GOD GOES GOLD GOLF GOOD GOOF GORE GOT GRAB GRACE GRAFT GRAIN GRAND GRANT GRAPE
+GRASP GRASS GRAVE GRAY GRAZE GREAT GREEN GREW GRID GRIEF GRIM GRIN GRIP GROAN GROG GROIN GROOM GROSS GROVE
+GROW GROWN GRUB GUARD GUIDE GULL GUM GUN GUT HAD HAG HAIL HALE HALF HALL HALT HAM HAND HANG HARD HARE HARM
+HAT HAVE HAVEN HAY HAZE HEAL HEAP HEAT HEAVY HELL HELP HEM HEN HER HERD HERE HERO HID HIDE HIGH HIKE HILL
+HIM HIP HIRE HIT HIVE HOLD HOLE HOLLY HOME HONEY HONOR HOOD HOOK HOOT HOP HOPE HORN HOT HOW HUB HUFF HUG
+HULL HUM HUMAN HUNG HUNK HUNT HURL HURRY HUSK HUT ICE ICY IDLE IMP INCH INGOT INK INN JAB JAG JIG JOG JOY
+JUDGE JUG JUICE JUICY JUMP JUT KEG KELP KEPT KEY KID KILL KIN KIND KING KISS KIT KITE KNEE KNIFE KNIT KNOB
+KNOT KNOWN LAB LACK LAD LAKE LAMP LANCE LARD LARK LASH LAST LATE LATER LAUD LAUGH LAWN LAY LEAD LEAF LEAN
+LEAP LEARN LEAVE LEDGE LEFT LEG LEMON LEND LESS LET LEVEL LID LIE LIFE LIFT LIGHT LIKE LIMB LIME LIMIT LIMP
+LINE LINK LIST LIVE LOAD LOB LOCAL LODGE LOFT LOG LONE LONG LOOM LOON LOOSE LORE LOSS LOST LOUD LOUT LOVE
+LOWER LUCK LULL LUNAR LURE LUST MACE MADE MAIL MAIN MALL MALT MANE MAP MARCH MARK MARRY MARSH MART MASK MASS
+MATCH MATE MAUL MAZE MEAL MEAN MEAT MEET MELD MELT MERCY MERE MERIT MESH MESS METAL MILD MILK MILL MIME MINT
+MIRE MIX MOAN MOAT MOB MODE MOLE MOLT MONEY MONTH MOOD MOON MOOR MOOT MORAL MORE MOSS MOST MOTH MOTTO MOUND
+MOURN MOUTH MOVE MOVED MOVIE MUD MUFF MUG MULL MUST MUTT NAB NAG NAIL NAME NAP NAVAL NAVE NEED NET NIGHT NIL
+NIP NIT NOBLE NOD NOOSE NORM NOSE NOTCH NOTE NUB NULL NUMB NUN OAK OAT OCEAN ODD ODE OIL OLD OLIVE ONCE ONE
+OPERA ORBIT ORDER ORE ORGAN OVEN OWE OWL OWN OZONE PACE PACK PACT PAIR PALE PALM PAN PANE PANEL PANG PANIC
+PAPER PARE PARK PARTY PASS PAST PASTA PASTE PAT PATCH PAUSE PAVE PAWN PEACE PEACH PEARL PEG PELT PEN PENNY
+PERCH PERK PEST PET PICK PIKE PILL PINE PIT PLACE PLAIN PLAN PLANE PLANT PLATE PLAY PLEA PLEAD PLOT PLOW PLUCK
+PLUG PLUMB PLUME PLUS PLUSH POD POKE POKER POLAR POLL POND POOL PORE POSE POST POT POUCH POUR POUT POWER PRESS
+PRICE PRIDE PRIME PRINT PRIOR PRIZE PROBE PROW PRUNE PUB PUFF PULL PULP PUMP PUN PUNCH PUP PURE PURSE PUSH PUT
+RACK RAFT RAGE RAIL RAIN RAKE RALLY RAM RANCH RANG RANGE RANT RAP RARE RASH RATE RAVE RAW RAY REACH REAL REALM
+REAP REBEL REED REEF REEL REIGN RELAY RELIC RENT RESET RESIN REVEL RID RIDE RIFF RIG RIGHT RILE RING RIP RISE
+RIVAL RIVET ROAD ROAM ROAR ROAST ROBE ROCK ROCKY RODE ROLE ROLL ROOF ROOK ROOM ROOST ROPE ROSE ROUGE ROUGH
+ROUND ROUSE ROVE ROAD ROYAL RUB RUDE RUFF RUIN RULE RUN RUST RUSTY RUT SAD SAFE SAIL SAKE SALT SAME SAND SANG
+SANK SAP SAVE SAVOR SAVVY SCALP SCAN SCARE SCAT SCENE SCONE SCOOP SCORE SCOUT SCRAM SCREW SCRUB SEAL SEAM SEAT
+SEE SEED SEEK SELF SELL SEND SET SHAME SHAPE SHARE SHARK SHARP SHAVE SHEAR SHED SHEET SHELF SHELL SHIFT SHIN
+SHINE SHIRT SHORE SHORT SHOUT SHOVE SHOWN SHRUB SHRUG SIGH SILK SILL SIN SIRE SITE SIZE SKATE SKID SKILL SKIN
+SKIT SKULL SLAB SLAG SLAM SLAP SLED SLEEK SLIM SLIP SLOE SLOP SLOT SLOW SLUG SLUMP SLUR SMACK SMALL SMART
+SMASH SMEAR SMELL SMILE SMOG SNAP SOAK SOAR SOCK SOFT SOIL SOLE SOLVE SOOT SORE SORT SOUL SOUR SOW SPAN SPAR
+SPARE SPARK SPECK SPELL SPEND SPEW SPICE SPILL SPIN SPIT SPOKE SPOOL SPORT SPOT SPOUT STACK STAFF STAIN STALK
+STAMP STAND STARK START STASH STATE STAVE STEAK STEAL STEAM STEEL STEEP STEER STEM STEP STERN STEW STICK STIFF
+STILL STING STINK STINT STIR STOCK STOMP STOP STORE STORY STOVE STOW STRAP STRAW STRAY STRIP STRUT STUCK STUD
+STUDY STUFF STYLE SUGAR SUIT SULK SUMP SUNNY SUPER SURGE SWAMP SWEAR SWEAT SWEEP SWEET SWELL SWIRL SWOON YACHT
+TAB TACK TAIL TALE TALL TAME TAN TAP TAR TASK TAUT TAWNY TEAM TEAR TELL TENSE TENT TEPID TERM TEST THICK THIGH
+THIN THING THINK THIRD THORN THREE THROW TIDE TIFF TIGER TILE TILL TILT TIME TIMID TIN TIRE TITLE TOAD TODAY
+TOIL TOKEN TOLD TOLL TOMB TONE TONIC TOOK TOOL TORE TORN TOSS TOTAL TOTE TOUGH TOUR TOWN TRACE TRACK TRAIL
+TRAIN TRAIT TRAMP TRAP TRAY TREAD TREAT TREE TREND TRIM TRIO TRIP TROLL TROOP TROUT TRUCE TRULY TRUMP TRUNK
+TUB TUCK TUN TUNE TWEAK TWIG TWIRL TYPE UGLY UNCLE UNDO UNFIT UNION UNIT UNITE UNITY UNTIL UPSET URGE VAGUE
+VALE VALOR VANE VAULT VENOM VENT VEST VIAL VICE VIEW VIGIL VILE VINE VIPER VIRAL VIRUS VISTA VIVID VOGUE VOTE
+VOW WAD WADE WAGE WAKE WALL WALTZ WANE WARD WARM WART WASH WASTE WATCH WEARY WEB WEIRD WELD WELL WENT WHALE
+WHEAT WHILE WHIM WHIP WHISK WHOLE WHOSE WIDE WILL WILT WINDY WINK WIPE WIRE WISH WISP WITCH WITTY WOE WOLF
+WOMB WON WONT WOOD WOOL WORD WORLD WORN WORSE WORST WRAP WRECK WREN WRING WRIT WRONG WROTE YAM YANK YARN
+YEARN YEAST YELL YIELD ZEAL ZERO ZINC ZONE ZOO ZOOM`.trim().split(/\s+/).map(w=>w.toUpperCase()).filter(w=>w.length>=2);
+const WORD_SET=new Set(WORDS_RAW);
+
+// =================== DECK ===================
+function buildDeck(){
+  const d=[];
+  for(const t of TILE_DIST) for(let i=0;i<t.n;i++) d.push({l:t.l,p:t.p});
+  return d;
+}
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
+  return a;
+}
+
+// =================== WORD FINDER ===================
+function bestWord(tiles){
+  let best=null, bestScore=-1;
+  const numBlanks=tiles.filter(t=>t.l==='_').length;
+  const maxLen=Math.min(tiles.length,7);
+  const freq={};
+  for(const t of tiles) if(t.l!=='_') freq[t.l]=(freq[t.l]||0)+1;
+  for(const word of WORD_SET){
+    if(word.length<2||word.length>maxLen) continue;
+    const needed={};
+    for(const ch of word) needed[ch]=(needed[ch]||0)+1;
+    let blanksNeeded=0, possible=true;
+    for(const [ch,count] of Object.entries(needed)){
+      const have=freq[ch]||0;
+      if(have<count){blanksNeeded+=count-have; if(blanksNeeded>numBlanks){possible=false;break;}}
+    }
+    if(!possible) continue;
+    let score=0;
+    const used={...freq};
+    const wordTiles=[];
+    for(const ch of word){
+      if((used[ch]||0)>0){
+        const tile=tiles.find(t=>t.l===ch&&!wordTiles.includes(t));
+        score+=tile?tile.p:LETTER_PTS[ch]||0;
+        wordTiles.push(tile||{l:ch,p:LETTER_PTS[ch]||0});
+        used[ch]--;
+      } else {
+        wordTiles.push({l:ch,p:0});
+      }
+    }
+    if(score>bestScore){bestScore=score; best={word,tiles:wordTiles,score};}
+  }
+  return best;
+}
+
+// =================== PEERJS MULTIPLAYER ===================
+// PeerJS handles WebRTC signaling via its free cloud server.
+// Game code is 5 alphanumeric chars. Host peer ID = "sh-XXXXX".
+// Invite link: https://blummlb.github.io/scrabble-holdem/?join=XXXXX  — auto-fills and connects on load.
+
+const PEERJS_CDN = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
+
+let peer = null;
+let myPeerId    = null;
+let myName      = '';
+let myRole      = 'observer';  // 'host' | 'client'
+let gameCode    = '';
+let hostConn    = null;        // client-side DataConnection to host
+let clientConns = {};          // host-side: peerId -> DataConnection
+let connectTimeout = null;
+
+let settings = {
+  maxPlayers:4, gameType:'2card', buyinLimit:1000,
+  timeout:30, smallBlind:10, minStart:2
+};
+let gs = {
+  phase:'lobby', seats:[], observers:[], deck:[],
+  community:[], pot:0, currentBet:0, dealerSeat:0,
+  activeSeat:-1, round:'idle', handNumber:0, roundBets:{},
+};
+let mySeatIndex  = -1;
+let mySittingOut = false;
+
+// ---- PEERJS LOADER ----
+function loadPeerJS(cb) {
+  if (typeof Peer !== 'undefined') { cb(); return; }
+  const s = document.createElement('script');
+  s.src = PEERJS_CDN;
+  s.onload = cb;
+  s.onerror = () => {
+    toast('Could not load networking library. Check your internet connection.', 'error');
+    showScreen('screen-landing');
+  };
+  document.head.appendChild(s);
+}
+
+// ---- CODE GENERATION ----
+function generateCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // unambiguous chars
+  let code = '';
+  for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+// ---- CREATE GAME ----
+function createGame() {
+  const name = document.getElementById('create-name').value.trim();
+  if (!name) { toast('Enter your name', 'error'); return; }
+  myName = name;
+  settings = {
+    maxPlayers: parseInt(document.getElementById('create-maxplayers').value),
+    gameType:   document.getElementById('create-gametype').value,
+    buyinLimit: parseInt(document.getElementById('create-buyin').value),
+    timeout:    parseInt(document.getElementById('create-timeout').value),
+    smallBlind: parseInt(document.getElementById('create-blind').value),
+    minStart:   parseInt(document.getElementById('create-minstart').value),
+  };
+  myRole = 'host';
+  showConnecting('Loading…', 'Initialising networking…');
+  loadPeerJS(() => _createGame());
+}
+
+function _createGame() {
+  gameCode = generateCode();
+  myPeerId = 'sh-' + gameCode;
+  gs.seats     = new Array(settings.maxPlayers).fill(null);
+  gs.observers = [{ peerId: myPeerId, name: myName }];
+  gs.phase     = 'lobby';
+
+  showConnecting('Creating game…', 'Reserving code ' + gameCode + '…');
+  if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
+
+  peer = new Peer(myPeerId, { debug: 0 });
+
+  peer.on('open', () => {
+    clearTimeout(connectTimeout);
+    peer.on('connection', conn => {
+      const pid = conn.peer;
+      clientConns[pid] = conn;
+      conn.on('open',  ()  => conn.send({ type:'WELCOME', settings, gs, gameCode }));
+      conn.on('data',  msg => handleHostMessage(pid, msg));
+      conn.on('close', ()  => { handlePlayerDisconnect(pid); delete clientConns[pid]; });
+      conn.on('error', ()  => { handlePlayerDisconnect(pid); delete clientConns[pid]; });
+    });
+    showLobby();
+    toast('Game ready! Code: ' + gameCode, 'success');
+  });
+
+  peer.on('error', err => {
+    if (err.type === 'unavailable-id') {
+      // Code collision — retry with a new code
+      if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
+      setTimeout(_createGame, 200);
+    } else {
+      toast('Connection error: ' + err.type, 'error');
+      showScreen('screen-create');
+    }
+  });
+
+  connectTimeout = setTimeout(() => {
+    if (document.getElementById('screen-connecting').classList.contains('active')) {
+      toast('Timed out. Check your connection.', 'error');
+      showScreen('screen-create');
+    }
+  }, 15000);
+}
+
+// ---- JOIN GAME ----
+function joinGame() {
+  const name = document.getElementById('join-name').value.trim();
+  const code = document.getElementById('join-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if (!name) { toast('Enter your name', 'error'); return; }
+  if (code.length !== 5) { toast('Enter a valid 5-character code', 'error'); return; }
+  myName = name; myRole = 'client'; gameCode = code;
+  showConnecting('Joining game…', 'Connecting to ' + code + '…');
+  loadPeerJS(() => _joinGame(code));
+}
+
+function _joinGame(code) {
+  if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
+  peer = new Peer({ debug: 0 });
+
+  peer.on('open', myId => {
+    myPeerId = myId;
+    hostConn = peer.connect('sh-' + code, { reliable: true });
+
+    hostConn.on('open',  ()  => {
+      clearTimeout(connectTimeout);
+      hostConn.send({ type: 'JOIN', name: myName, peerId: myPeerId });
+    });
+    hostConn.on('data',  msg => handleClientMessage(msg));
+    hostConn.on('close', ()  => { toast('Disconnected from host', 'error'); showScreen('screen-landing'); });
+    hostConn.on('error', err => { toast('Could not connect to game. Check the code.', 'error'); abortConnect(); showScreen('screen-join'); });
+  });
+
+  peer.on('error', err => {
+    toast('Network error: ' + err.type, 'error');
+    abortConnect(); showScreen('screen-join');
+  });
+
+  connectTimeout = setTimeout(() => {
+    if (document.getElementById('screen-connecting').classList.contains('active')) {
+      toast('Timed out. Is the host online?', 'error');
+      abortConnect(); showScreen('screen-join');
+    }
+  }, 15000);
+}
+
+// ---- SEND HELPERS ----
+function sendToHost(msg) {
+  if (myRole === 'host') handleHostMessage(myPeerId, msg);
+  else if (hostConn && hostConn.open) hostConn.send(msg);
+}
+
+function hostBroadcast(msg) {
+  for (const conn of Object.values(clientConns))
+    if (conn.open) try { conn.send(msg); } catch(e) {}
+}
+
+function sendToPeer(peerId, msg) {
+  if (peerId === myPeerId) { handleClientMessage(msg); return; }
+  const conn = clientConns[peerId];
+  if (conn && conn.open) try { conn.send(msg); } catch(e) {}
+}
+
+// ---- CONNECT / CANCEL / ABORT ----
+function showConnecting(msg, sub) {
+  showScreen('screen-connecting');
+  const m = document.getElementById('conn-msg');
+  const s = document.getElementById('conn-sub');
+  if (m) m.textContent = msg || 'Connecting…';
+  if (s) s.textContent = sub || '';
+}
+
+function cancelConnect() {
+  clearTimeout(connectTimeout);
+  const wasRole = myRole;
+  abortConnect();
+  showScreen(wasRole === 'host' ? 'screen-create' : 'screen-join');
+  toast('Cancelled', 'info');
+}
+
+function abortConnect() {
+  clearTimeout(connectTimeout);
+  if (hostConn) { try { hostConn.close(); } catch(e) {} hostConn = null; }
+  if (peer)     { try { peer.destroy();   } catch(e) {} peer = null; }
+  clientConns = {};
+  myPeerId = ''; gameCode = '';
+  myRole = 'observer';
+}
+
+// ---- INVITE ----
+function sendInviteSMS() {
+  if (!gameCode) { toast('No active game code', 'error'); return; }
+  document.getElementById('invite-code-big').textContent = gameCode;
+  const link = 'https://blummlb.github.io/scrabble-holdem/?join=' + gameCode;
+  document.getElementById('invite-link-input').value = link;
+  showModal('modal-invite');
+}
+
+function copyInviteLink() {
+  const link = document.getElementById('invite-link-input').value;
+  const names = {'2card':"Two-Card Hold'em",'5card':"Five-Card Hold'em",'5cardsplit':'Five-Card Split Pot'};
+  const type  = names[settings.gameType] || "Scrabble Hold'em";
+  const msg   = `Join my Scrabble Hold'em game (${type})!\n\nTap this link to play:\n${link}`;
+  navigator.clipboard.writeText(msg)
+    .then(() => { toast('Invite copied! Paste it into any message app.', 'success'); closeModal('modal-invite'); })
+    .catch(() => {
+      // Fallback: select the input
+      const el = document.getElementById('invite-link-input');
+      el.select(); document.execCommand('copy');
+      toast('Link copied!', 'success');
+    });
+}
+
+function shareInvite() {
+  const link = document.getElementById('invite-link-input').value;
+  const names = {'2card':"Two-Card Hold'em",'5card':"Five-Card Hold'em",'5cardsplit':'Five-Card Split Pot'};
+  const type  = names[settings.gameType] || "Scrabble Hold'em";
+  if (navigator.share) {
+    navigator.share({
+      title: "Join my Scrabble Hold'em game!",
+      text:  `Join my ${type} game — tap the link to play!`,
+      url:   link,
+    }).catch(() => {});
+  } else {
+    copyInviteLink();
+  }
+}
+
+// ---- BROADCAST STATE ----
+function broadcastState() { broadcastStateToAll(); }
+
+function buildSafeState(viewerPeerId) {
+  const clone = JSON.parse(JSON.stringify(gs));
+  clone.seats = clone.seats.map(s => {
+    if (!s) return null;
+    const seat = { ...s };
+    if (seat.peerId !== viewerPeerId && gs.phase === 'playing')
+      seat.hand = (seat.hand || []).map(() => ({ l:'?', p:0 }));
+    return seat;
+  });
+  return clone;
+}
+
+function broadcastStateToAll() {
+  for (const [peerId, conn] of Object.entries(clientConns))
+    if (conn.open) try { conn.send({ type:'STATE', gs:buildSafeState(peerId), settings }); } catch(e) {}
+  handleClientMessage({ type:'STATE', gs:buildSafeState(myPeerId), settings });
+}
+
+
+
+// =================== HOST MESSAGE HANDLER ===================
+function handleHostMessage(peerId, msg){
+  switch(msg.type){
+    case 'JOIN':
+      if(gs.phase!=='lobby'){
+        const conn=clientConns[peerId];
+        if(conn && conn.dc) dcSend(conn.dc, {type:'ERROR', msg:'Game already in progress, join as observer.'});
+        // still allow as observer
+      }
+      // Add as observer
+      if(!gs.observers.find(o=>o.peerId===peerId)){
+        gs.observers.push({peerId, name:msg.name});
+      }
+      broadcastState();
+      break;
+    case 'SIT_DOWN':{
+      const seatIdx=msg.seatIndex;
+      if(seatIdx<0||seatIdx>=settings.maxPlayers||gs.seats[seatIdx]!==null){
+        sendToPeer(peerId,{type:'ERROR',msg:'Seat unavailable'});
+        return;
+      }
+      const buyIn=Math.min(Math.max(10,msg.buyIn),settings.buyinLimit);
+      gs.seats[seatIdx]={peerId, name:msg.name, stack:buyIn, folded:false, sittingOut:false, bet:0, hand:[]};
+      // Remove from observers
+      gs.observers=gs.observers.filter(o=>o.peerId!==peerId);
+      broadcastState();
+      break;
+    }
+    case 'STAND_UP':{
+      const idx=gs.seats.findIndex(s=>s&&s.peerId===peerId);
+      if(idx>=0){
+        gs.observers.push({peerId, name:gs.seats[idx].name});
+        gs.seats[idx]=null;
+        broadcastState();
+      }
+      break;
+    }
+    case 'SIT_OUT':{
+      const idx=gs.seats.findIndex(s=>s&&s.peerId===peerId);
+      if(idx>=0){gs.seats[idx].sittingOut=msg.value; broadcastState();}
+      break;
+    }
+    case 'START_GAME':
+      if(peerId!==myPeerId) return; // only host can start
+      startNewHand();
+      break;
+    case 'PLAYER_ACTION':
+      handlePlayerActionMsg(peerId, msg);
+      break;
+    case 'CHAT':
+      const sender=msg.name||'?';
+      const chatMsg={type:'CHAT', name:sender, text:msg.text};
+      addChatMessage(sender, msg.text);
+      hostBroadcast(chatMsg);
+      break;
+    case 'LEAVE':
+      handlePlayerDisconnect(peerId);
+      break;
+  }
+}
+
+function sendToPeer(peerId, msg){
+  if(peerId===myPeerId){
+    handleClientMessage(msg);
+    return;
+  }
+  const conn=clientConns[peerId];
+  if(conn) try{conn.send(msg);}catch(e){}
+}
+
+function broadcastState(){
+  broadcastStateToAll();
+}
+
+function buildSafeState(viewerPeerId){
+  const clone=JSON.parse(JSON.stringify(gs));
+  clone.seats=clone.seats.map((s)=>{
+    if(!s) return null;
+    const seat={...s};
+    // During play, hide other players' hands
+    if(seat.peerId!==viewerPeerId && (gs.phase==='playing')){
+      seat.hand=(seat.hand||[]).map(()=>({l:'?',p:0}));
+    }
+    return seat;
+  });
+  return clone;
+}
+
+function broadcastStateToAll(){
+  for(const [peerId, conn] of Object.entries(clientConns)){
+    const safeGs=buildSafeState(peerId);
+    try{conn.send({type:'STATE', gs:safeGs, settings});}catch(e){}
+  }
+  handleClientMessage({type:'STATE', gs:buildSafeState(myPeerId), settings});
+}
+
+// =================== CLIENT MESSAGE HANDLER ===================
+function handleClientMessage(msg){
+  switch(msg.type){
+    case 'WELCOME':
+      settings=msg.settings;
+      gs=msg.gs;
+      gameCode=msg.gameCode;
+      // Add self as observer if not already in state
+      showLobby();
+      toast('Connected to game!','success');
+      break;
+    case 'STATE':
+      settings=msg.settings||settings;
+      gs=msg.gs;
+      updateMySeatIndex();
+      if(gs.phase==='playing'||gs.phase==='showdown'){
+        if(!document.getElementById('screen-game').classList.contains('active')){
+          showGameScreen();
+        } else {
+          updateGameUI();
+        }
+      } else {
+        if(!document.getElementById('screen-lobby').classList.contains('active') &&
+           !document.getElementById('screen-landing').classList.contains('active')){
+          // keep game screen if still there; otherwise update lobby
+        }
+        updateLobbyUI();
+        if(document.getElementById('screen-game').classList.contains('active')) updateGameUI();
+      }
+      break;
+    case 'DEAL':
+      break;
+    case 'SHOWDOWN':
+      showShowdown(msg.results);
+      break;
+    case 'CHAT':
+      addChatMessage(msg.name, msg.text);
+      break;
+    case 'ERROR':
+      toast(msg.msg,'error');
+      break;
+    case 'TOAST':
+      toast(msg.msg, msg.kind||'info');
+      break;
+    case 'TIMER':
+      updateTimerUI(msg.seat, msg.remaining, msg.total);
+      if(mySeatIndex>=0 && msg.seat===mySeatIndex && msg.remaining<=10){
+        const statusEl=document.getElementById('action-status');
+        if(statusEl && document.getElementById('screen-game').classList.contains('active'))
+          statusEl.textContent=`⏱ ${msg.remaining}s to act!`;
+      }
+      break;
+  }
+}
+
+function updateMySeatIndex(){
+  mySeatIndex=gs.seats.findIndex(s=>s&&s.peerId===myPeerId);
+}
+
+// =================== PLAYER DISCONNECT ===================
+function handlePlayerDisconnect(peerId){
+  const seatIdx=gs.seats.findIndex(s=>s&&s.peerId===peerId);
+  if(seatIdx>=0) gs.seats[seatIdx]=null;
+  gs.observers=gs.observers.filter(o=>o.peerId!==peerId);
+  toast('A player disconnected','info');
+  broadcastStateToAll();
+  // If it was their turn, advance
+  if(gs.phase==='playing' && gs.activeSeat===seatIdx){
+    advanceTurn();
+  }
+}
+
+// =================== GAME LOGIC (HOST ONLY) ===================
+let timerInterval=null;
+let timerRemaining=0;
+
+function getHoleCount(){
+  if(settings.gameType==='2card') return 2;
+  return 5;
+}
+function getCommunityCount(){
+  if(settings.gameType==='2card') return 5;
+  if(settings.gameType==='5card') return 3;
+  return 3;
+}
+function getDrawForStreet(street, gameType){
+  // Returns number of community tiles to draw for each street
+  if(gameType==='2card') return {flop:3,turn:1,river:1}[street]||0;
+  if(gameType==='5card'||gameType==='5cardsplit') return {flop:3,turn:1,river:1}[street]||0;
+  return 0;
+}
+
+function startNewHand(){
+  const activePlayers=gs.seats.filter(s=>s&&!s.sittingOut&&s.stack>0);
+  if(activePlayers.length<settings.minStart){
+    toast(`Need at least ${settings.minStart} players to start`,'error');
+    return;
+  }
+
+  gs.phase='playing';
+  gs.deck=shuffle(buildDeck());
+  gs.community=[];
+  gs.pot=0;
+  gs.currentBet=settings.smallBlind*2; // big blind
+  gs.handNumber++;
+  gs.round='preflop';
+  gs.roundBets={};
+
+  // Reset seats
+  gs.seats.forEach((s,i)=>{
+    if(s){s.folded=false; s.hand=[]; s.bet=0;}
+  });
+
+  // Rotate dealer
+  const playerSeats=gs.seats.map((s,i)=>s&&!s.sittingOut&&s.stack>0?i:-1).filter(i=>i>=0);
+  if(playerSeats.length===0) return;
+  let dealerIdx=playerSeats[(playerSeats.indexOf(gs.dealerSeat)+1)%playerSeats.length];
+  gs.dealerSeat=dealerIdx;
+
+  // Deal hole tiles
+  const holeCount=getHoleCount();
+  for(let h=0;h<holeCount;h++){
+    for(const si of playerSeats){
+      gs.seats[si].hand.push(gs.deck.pop());
+    }
+  }
+
+  // Post blinds
+  const sbIdx=playerSeats[(playerSeats.indexOf(dealerIdx)+1)%playerSeats.length];
+  const bbIdx=playerSeats[(playerSeats.indexOf(dealerIdx)+2)%playerSeats.length];
+  const sbAmt=Math.min(settings.smallBlind, gs.seats[sbIdx].stack);
+  const bbAmt=Math.min(settings.smallBlind*2, gs.seats[bbIdx].stack);
+  gs.seats[sbIdx].stack-=sbAmt; gs.seats[sbIdx].bet=sbAmt;
+  gs.seats[bbIdx].stack-=bbAmt; gs.seats[bbIdx].bet=bbAmt;
+  gs.pot=sbAmt+bbAmt;
+  gs.roundBets[sbIdx]=sbAmt;
+  gs.roundBets[bbIdx]=bbAmt;
+  gs.currentBet=bbAmt;
+
+  // First to act preflop = after big blind
+  const afterBB=playerSeats[(playerSeats.indexOf(bbIdx)+1)%playerSeats.length];
+  gs.activeSeat=afterBB;
+
+  // Switch to game screen
+  broadcastStateToAll();
+  broadcastToast('Hand #'+gs.handNumber+' started!','info');
+
+  // Start action timer
+  startActionTimer();
+
+  // Switch to game screen for host
+  showGameScreen();
+}
+
+function broadcastToast(msg, kind){
+  hostBroadcast({type:'TOAST', msg, kind});
+  toast(msg, kind);
+}
+
+function startActionTimer(){
+  clearInterval(timerInterval);
+  timerRemaining=settings.timeout;
+  timerInterval=setInterval(()=>{
+    timerRemaining--;
+    broadcastTimerTick();
+    if(timerRemaining<=0){
+      clearInterval(timerInterval);
+      // Auto-action: check if possible, else fold
+      const seat=gs.seats[gs.activeSeat];
+      if(!seat) return;
+      const callAmt=gs.currentBet-(gs.roundBets[gs.activeSeat]||0);
+      if(callAmt===0){
+        processAction(gs.activeSeat,'check',0);
+      } else {
+        processAction(gs.activeSeat,'fold',0);
+      }
+    }
+  },1000);
+}
+
+function broadcastTimerTick(){
+  const msg={type:'TIMER', seat:gs.activeSeat, remaining:timerRemaining, total:settings.timeout};
+  hostBroadcast(msg);
+  updateTimerUI(gs.activeSeat, timerRemaining, settings.timeout);
+}
+
+function handlePlayerActionMsg(peerId, msg){
+  const seatIdx=gs.seats.findIndex(s=>s&&s.peerId===peerId);
+  if(seatIdx!==gs.activeSeat) return; // not their turn
+  clearInterval(timerInterval);
+  processAction(seatIdx, msg.action, msg.amount||0);
+}
+
+function processAction(seatIdx, action, amount){
+  const seat=gs.seats[seatIdx];
+  if(!seat) return;
+
+  if(action==='fold'){
+    seat.folded=true;
+    broadcastToast(`${seat.name} folds`,'info');
+  } else if(action==='check'){
+    broadcastToast(`${seat.name} checks`,'info');
+  } else if(action==='call'){
+    const callAmt=Math.min(gs.currentBet-(gs.roundBets[seatIdx]||0), seat.stack);
+    seat.stack-=callAmt; seat.bet=(seat.bet||0)+callAmt; gs.pot+=callAmt;
+    gs.roundBets[seatIdx]=(gs.roundBets[seatIdx]||0)+callAmt;
+    broadcastToast(`${seat.name} calls ${callAmt}`,'info');
+  } else if(action==='raise'){
+    const callAmt=gs.currentBet-(gs.roundBets[seatIdx]||0);
+    const raiseAmt=Math.min(callAmt+amount, seat.stack);
+    seat.stack-=raiseAmt; seat.bet=(seat.bet||0)+raiseAmt; gs.pot+=raiseAmt;
+    gs.roundBets[seatIdx]=(gs.roundBets[seatIdx]||0)+raiseAmt;
+    gs.currentBet=gs.roundBets[seatIdx];
+    broadcastToast(`${seat.name} raises to ${gs.currentBet}`,'info');
+  }
+
+  broadcastStateToAll();
+
+  // Check if hand over (one player left)
+  const activePlayers=gs.seats.filter((s,i)=>s&&!s.folded&&!s.sittingOut&&s.stack>=0);
+  if(activePlayers.length===1){
+    endHandFold(activePlayers[0]);
+    return;
+  }
+
+  // Check if betting round is closed
+  if(isBettingClosed()){
+    advanceStreet();
+  } else {
+    advanceTurn();
+  }
+}
+
+function isBettingClosed(){
+  const active=gs.seats.filter((s,i)=>s&&!s.folded&&!s.sittingOut);
+  for(const [i,s] of gs.seats.entries()){
+    if(!s||s.folded||s.sittingOut) continue;
+    const myBet=gs.roundBets[i]||0;
+    if(myBet<gs.currentBet && s.stack>0) return false;
+  }
+  return true;
+}
+
+function advanceTurn(){
+  const playerSeats=gs.seats.map((s,i)=>s&&!s.folded&&!s.sittingOut&&s.stack>=0?i:-1).filter(i=>i>=0);
+  if(playerSeats.length===0) return;
+  const cur=playerSeats.indexOf(gs.activeSeat);
+  gs.activeSeat=playerSeats[(cur+1)%playerSeats.length];
+  broadcastStateToAll();
+  startActionTimer();
+}
+
+function advanceStreet(){
+  // Collect bets
+  gs.seats.forEach((s,i)=>{if(s){s.bet=0;}});
+  gs.roundBets={};
+  gs.currentBet=0;
+
+  if(gs.round==='preflop'){
+    gs.round='flop';
+    const n=getDrawForStreet('flop', settings.gameType);
+    for(let i=0;i<n;i++) gs.community.push(gs.deck.pop());
+  } else if(gs.round==='flop'){
+    gs.round='turn';
+    gs.community.push(gs.deck.pop());
+  } else if(gs.round==='turn'){
+    gs.round='river';
+    gs.community.push(gs.deck.pop());
+  } else if(gs.round==='river'){
+    doShowdown();
+    return;
+  }
+
+  // Set first actor (first active after dealer)
+  const playerSeats=gs.seats.map((s,i)=>s&&!s.folded&&!s.sittingOut&&s.stack>=0?i:-1).filter(i=>i>=0);
+  const dealerPos=playerSeats.indexOf(gs.dealerSeat);
+  gs.activeSeat=playerSeats[(dealerPos+1)%playerSeats.length];
+
+  broadcastStateToAll();
+  startActionTimer();
+}
+
+function endHandFold(winner){
+  clearInterval(timerInterval);
+  gs.phase='showdown';
+  winner.stack+=gs.pot;
+  const winAmt=gs.pot;
+  gs.pot=0;
+  broadcastStateToAll();
+  const results=[{
+    name:winner.name, peerId:winner.peerId,
+    word:'—', score:0, tiles:[], hand:winner.hand, winner:true, wonAmount:winAmt, byFold:true
+  }];
+  gs.seats.forEach(s=>{
+    if(s&&s.peerId!==winner.peerId&&s.folded){
+      results.push({name:s.name,peerId:s.peerId,word:'Folded',score:0,tiles:[],hand:s.hand,winner:false,folded:true});
+    }
+  });
+  hostBroadcast({type:'SHOWDOWN', results});
+  handleClientMessage({type:'SHOWDOWN', results});
+}
+
+function doShowdown(){
+  clearInterval(timerInterval);
+  gs.phase='showdown';
+
+  const activePlayers=gs.seats.filter(s=>s&&!s.folded&&!s.sittingOut);
+  const results=[];
+  let splitPot=settings.gameType==='5cardsplit';
+
+  for(const seat of activePlayers){
+    const tiles=[...seat.hand,...gs.community];
+    const best=bestWord(tiles);
+    results.push({
+      name:seat.name, peerId:seat.peerId,
+      word:best?best.word:'', score:best?best.score:0,
+      tiles:best?best.tiles:[], hand:seat.hand, winner:false
+    });
+  }
+  // Add folded players
+  gs.seats.forEach(s=>{
+    if(s&&s.folded){
+      results.push({name:s.name,peerId:s.peerId,word:'Folded',score:0,tiles:[],hand:s.hand,winner:false,folded:true});
+    }
+  });
+
+  const activeResults=results.filter(r=>!r.folded);
+  const maxScore=Math.max(...activeResults.map(r=>r.score));
+
+  if(splitPot){
+    // Split pot: best word gets half, worst word (among active) gets half
+    const sorted=[...activeResults].sort((a,b)=>b.score-a.score);
+    const winners=[sorted[0]];
+    const losers=[sorted[sorted.length-1]];
+    if(sorted.length>=2){
+      const half=Math.floor(gs.pot/2);
+      const rem=gs.pot-half;
+      winners.forEach(w=>{
+        const seat=gs.seats.find(s=>s&&s.peerId===w.peerId);
+        if(seat){seat.stack+=half; w.wonAmount=half;}
+        w.winner=true; w.splitTag='High Half';
+      });
+      losers.forEach(l=>{
+        const seat=gs.seats.find(s=>s&&s.peerId===l.peerId);
+        if(seat){seat.stack+=rem; l.wonAmount=rem;}
+        l.winner=true; l.splitTag='Low Half';
+      });
+      if(winners[0].peerId===losers[0].peerId){
+        // same player wins both
+        const seat=gs.seats.find(s=>s&&s.peerId===winners[0].peerId);
+        if(seat) seat.stack+=rem; // they got both halves already but double-counted
+      }
+    } else {
+      const seat=gs.seats.find(s=>s&&s.peerId===sorted[0].peerId);
+      if(seat){seat.stack+=gs.pot; sorted[0].wonAmount=gs.pot; sorted[0].winner=true;}
+    }
+  } else {
+    const winners=activeResults.filter(r=>r.score===maxScore);
+    const share=Math.floor(gs.pot/winners.length);
+    let rem=gs.pot-share*winners.length;
+    winners.forEach(w=>{
+      const seat=gs.seats.find(s=>s&&s.peerId===w.peerId);
+      if(seat){seat.stack+=share+(rem-->0?1:0); w.wonAmount=share;}
+      w.winner=true;
+    });
+  }
+
+  gs.pot=0;
+  broadcastStateToAll();
+  hostBroadcast({type:'SHOWDOWN', results});
+  handleClientMessage({type:'SHOWDOWN', results});
+}
+
+// =================== LOBBY ACTIONS ===================
+function showSitDownModal(){
+  const available=gs.seats.map((s,i)=>s?null:i).filter(i=>i!==null);
+  if(available.length===0){toast('No seats available','error'); return;}
+  const sel=document.getElementById('seat-select');
+  sel.innerHTML=available.map(i=>`<option value="${i}">Seat ${i+1}</option>`).join('');
+  const bi=document.getElementById('buyin-amount');
+  bi.max=settings.buyinLimit; bi.value=Math.min(settings.buyinLimit,1000);
+  document.getElementById('buyin-hint').textContent=`Max: ${settings.buyinLimit.toLocaleString()} chips`;
+  showModal('modal-sitdown');
+}
+
+function confirmSitDown(){
+  const seatIndex=parseInt(document.getElementById('seat-select').value);
+  const buyIn=Math.min(parseInt(document.getElementById('buyin-amount').value)||1000, settings.buyinLimit);
+  sendToHost({type:'SIT_DOWN', seatIndex, buyIn, name:myName, peerId:myPeerId});
+  closeModal('modal-sitdown');
+}
+
+function standUp(){
+  sendToHost({type:'STAND_UP', peerId:myPeerId});
+}
+
+function standUpFromGame(){
+  sendToHost({type:'STAND_UP', peerId:myPeerId});
+  closeModal('modal-ingame-menu');
+}
+
+function leaveGame(){
+  sendToHost({type:'LEAVE', peerId:myPeerId});
+  clearInterval(timerInterval);
+  abortConnect();
+  showScreen('screen-landing');
+}
+
+function leaveFromGame(){
+  leaveGame();
+}
+
+function toggleSitOut(){
+  mySittingOut=!mySittingOut;
+  sendToHost({type:'SIT_OUT', value:mySittingOut, peerId:myPeerId});
+  document.getElementById('btn-sit-out-toggle').textContent=mySittingOut?'Resume Playing':'Sit Out Next Hand';
+  closeModal('modal-ingame-menu');
+  toast(mySittingOut?'You will sit out next hand':'You will play next hand','info');
+}
+
+function hostStartGame(){
+  sendToHost({type:'START_GAME'});
+}
+
+function sendChat(){
+  const input=document.getElementById('chat-input');
+  const text=input.value.trim();
+  if(!text) return;
+  input.value='';
+  sendToHost({type:'CHAT', name:myName, text});
+}
+
+// =================== PLAYER ACTION ===================
+function playerAction(action){
+  const amount=action==='raise'?parseInt(document.getElementById('raise-slider').value):0;
+  sendToHost({type:'PLAYER_ACTION', action, amount, peerId:myPeerId});
+  disableActions();
+}
+
+// =================== UI: LOBBY ===================
+function showLobby(){
+  showScreen('screen-lobby');
+  document.getElementById('lobby-code-display').textContent=gameCode;
+  const bigCode = document.getElementById('invite-code-big');
+  if(bigCode) bigCode.textContent = gameCode;
+  const gt={
+    '2card':'Two-Card Hold\'em','5card':'Five-Card Hold\'em','5cardsplit':'Five-Card Split Pot'
+  };
+  document.getElementById('lobby-game-type').textContent=gt[settings.gameType]||settings.gameType;
+  document.getElementById('lobby-blinds').textContent=`${settings.smallBlind}/${settings.smallBlind*2}`;
+  document.getElementById('lobby-buyin').textContent=`${settings.buyinLimit.toLocaleString()}`;
+  document.getElementById('lobby-timeout').textContent=settings.timeout;
+  if(myRole==='host'){
+    document.getElementById('host-start-wrap').style.display='block';
+  }
+  updateLobbyUI();
+}
+
+function updateLobbyUI(){
+  if(!document.getElementById('screen-lobby').classList.contains('active')) return;
+
+  updateMySeatIndex();
+
+  // Seats grid
+  const grid=document.getElementById('lobby-seats-grid');
+  grid.innerHTML='';
+  for(let i=0;i<settings.maxPlayers;i++){
+    const seat=gs.seats[i];
+    const isDealer=gs.dealerSeat===i;
+    const isMe=seat&&seat.peerId===myPeerId;
+    let html=`<div class="seat-card ${seat?'occupied':'seat-empty'}${isMe?' mine':''}${seat&&seat.sittingOut?' sitting-out':''}">`;
+    if(isDealer&&seat) html+=`<div class="dealer-chip">D</div>`;
+    html+=`<div class="seat-number">Seat ${i+1}</div>`;
+    html+=`<div class="seat-avatar">${seat?'🧑':'⬜'}</div>`;
+    html+=`<div class="seat-name">${seat?escHtml(seat.name):'Open'}</div>`;
+    if(seat) html+=`<div class="seat-chips">🪙 ${seat.stack.toLocaleString()}</div>`;
+    if(seat&&seat.sittingOut) html+=`<div class="seat-status">Sitting Out</div>`;
+    html+='</div>';
+    grid.innerHTML+=html;
+  }
+
+  // Observers
+  const obsList=document.getElementById('lobby-observers-list');
+  if(gs.observers.length===0){
+    obsList.innerHTML='<span class="text-muted" style="font-size:.8rem">None</span>';
+  } else {
+    obsList.innerHTML=gs.observers.map(o=>`<div class="observer-chip">${escHtml(o.name)}</div>`).join('');
+  }
+
+  // My status
+  const iAmSeated=mySeatIndex>=0;
+  const pill=document.getElementById('my-status-pill');
+  if(iAmSeated){
+    const seat=gs.seats[mySeatIndex];
+    pill.className='status-pill seated';
+    pill.textContent=`🪑 Seat ${mySeatIndex+1} — ${seat?seat.stack.toLocaleString()+' chips':''}`;
+    document.getElementById('btn-sit-down').style.display='none';
+    document.getElementById('btn-stand-up').style.display='block';
+  } else {
+    pill.className='status-pill observer';
+    pill.textContent='👁 Observing';
+    document.getElementById('btn-sit-down').style.display='block';
+    document.getElementById('btn-stand-up').style.display='none';
+  }
+
+  // Start button
+  if(myRole==='host'){
+    const activeCount=gs.seats.filter(s=>s&&!s.sittingOut).length;
+    const canStart=activeCount>=settings.minStart;
+    document.getElementById('btn-start-game').disabled=!canStart;
+    document.getElementById('start-req-msg').textContent=
+      canStart?'Ready to start!':'Need '+settings.minStart+' seated players to start.';
+  }
+
+  // If game started, switch to game screen
+  if(gs.phase==='playing'||gs.phase==='showdown'){
+    showGameScreen();
+  }
+}
+
+// =================== UI: GAME TABLE ===================
+function showGameScreen(){
+  if(!document.getElementById("screen-game").classList.contains("active")) showScreen("screen-game");
+  document.getElementById("game-code-bar").textContent="Code: "+gameCode;
+  updateMySeatIndex();
+  document.getElementById("my-hand-panel").style.display=mySeatIndex>=0?"block":"none";
+  document.getElementById("observer-note").style.display=mySeatIndex>=0?"none":"block";
+  updateGameUI();
+}
+
+let timerBars={};
+function updateTimerUI(seatIdx, remaining, total){
+  const bar=document.getElementById('ts-timer-'+seatIdx);
+  if(bar){
+    const pct=(remaining/total)*100;
+    bar.style.width=pct+'%';
+    bar.className='ts-timer-bar'+(pct<30?' urgent':'');
+  }
+}
+
+function updateGameUI(){
+  if(!document.getElementById('screen-game').classList.contains('active')) return;
+
+  updateMySeatIndex();
+
+  // Round pips
+  const rounds=['pre','flop','turn','river'];
+  const roundMap={preflop:'pre',flop:'flop',turn:'turn',river:'river'};
+  const activeRound=roundMap[gs.round]||'';
+  rounds.forEach((r,i)=>{
+    const el=document.getElementById('gpip-'+r);
+    if(!el) return;
+    const activeIdx=rounds.indexOf(activeRound);
+    if(i<activeIdx) el.className='round-pip done';
+    else if(i===activeIdx) el.className='round-pip active';
+    else el.className='round-pip';
+  });
+
+  // Pot
+  document.getElementById('game-pot').textContent=gs.pot;
+
+  // Community tiles
+  const commEl=document.getElementById('game-community');
+  commEl.innerHTML='';
+  for(let i=0;i<5;i++){
+    const t=gs.community[i];
+    if(t){
+      const el=document.createElement('div');
+      el.className='tile';
+      el.innerHTML=`<span class="tile-letter">${t.l}</span><span class="tile-points">${t.p}</span>`;
+      commEl.appendChild(el);
+    } else {
+      const el=document.createElement('div');
+      el.className='tile placeholder';
+      commEl.appendChild(el);
+    }
+  }
+
+  // Split seats into top and bottom halves for layout
+  const half=Math.ceil(settings.maxPlayers/2);
+  const topSeats=gs.seats.slice(0,half);
+  const bottomSeats=gs.seats.slice(half);
+
+  renderSeatRow('table-seats-top', topSeats, 0);
+  renderSeatRow('table-seats-bottom', bottomSeats, half);
+
+  // My hole tiles
+  if(mySeatIndex>=0){
+    const mySeat=gs.seats[mySeatIndex];
+    if(mySeat){
+      const holeEl=document.getElementById('my-hole-tiles');
+      holeEl.innerHTML='';
+      for(const t of (mySeat.hand||[])){
+        const el=document.createElement('div');
+        el.className='tile'+(t.l==='?'?' face-down':'');
+        if(t.l!=='?') el.innerHTML=`<span class="tile-letter">${t.l}</span><span class="tile-points">${t.p}</span>`;
+        holeEl.appendChild(el);
+      }
+      // Best word hint
+      if(gs.community.length>0 && mySeat.hand && mySeat.hand.length>0 && mySeat.hand[0].l!=='?'){
+        const allTiles=[...mySeat.hand,...gs.community];
+        const best=bestWord(allTiles);
+        const bwEl=document.getElementById('my-best-word');
+        if(best){
+          bwEl.classList.add('show');
+          const tilesEl=document.getElementById('mbw-tiles');
+          tilesEl.innerHTML='';
+          for(const t of best.tiles){
+            tilesEl.innerHTML+=`<div class="mbw-tile"><span class="tile-letter">${t.l}</span><span class="tile-points">${t.p}</span></div>`;
+          }
+          document.getElementById('mbw-score').textContent=`"${best.word}" — ${best.score} pts`;
+        } else {
+          bwEl.classList.remove('show');
+        }
+      }
+    }
+  }
+
+  // Actions
+  updateActionUI();
+}
+
+function renderSeatRow(containerId, seats, startIdx){
+  const el=document.getElementById(containerId);
+  el.style.gridTemplateColumns=`repeat(${seats.length},1fr)`;
+  el.innerHTML='';
+  seats.forEach((seat,localIdx)=>{
+    const globalIdx=startIdx+localIdx;
+    const isActive=gs.activeSeat===globalIdx;
+    const isDealer=gs.dealerSeat===globalIdx;
+    const isMe=seat&&seat.peerId===myPeerId;
+    let classes='table-seat';
+    if(!seat) classes+=' empty';
+    if(seat&&seat.folded) classes+=' folded';
+    if(seat&&seat.sittingOut) classes+=' sitting-out';
+    if(isActive&&seat&&!seat.folded) classes+=' active-turn';
+
+    let html=`<div class="${classes}" id="tseat-${globalIdx}">`;
+    if(isDealer&&seat) html+=`<div class="ts-dealer">D</div>`;
+    if(seat){
+      html+=`<div class="ts-name">${isMe?'⭐ ':''}${escHtml(seat.name)}</div>`;
+      html+=`<div class="ts-stack">🪙${seat.stack}</div>`;
+      const bet=gs.roundBets?gs.roundBets[globalIdx]||0:0;
+      if(bet>0) html+=`<div class="ts-bet">Bet: ${bet}</div>`;
+      // Hole tiles
+      html+='<div class="ts-hole-tiles">';
+      for(const t of (seat.hand||[])){
+        if(t.l==='?'||seat.peerId!==myPeerId){
+          html+='<div class="ts-tile"></div>';
+        } else {
+          html+=`<div class="ts-tile face-up"><span class="tsl">${t.l}</span><span class="tsp">${t.p}</span></div>`;
+        }
+      }
+      html+='</div>';
+      if(seat.folded) html+=`<div style="font-size:.65rem;color:rgba(255,255,255,.4)">Folded</div>`;
+      if(seat.sittingOut) html+=`<div style="font-size:.65rem;color:rgba(255,255,255,.3)">Sitting Out</div>`;
+    } else {
+      html+=`<div class="ts-name" style="opacity:.3">Empty</div>`;
+    }
+    // Timer bar
+    html+=`<div class="ts-timer"><div class="ts-timer-bar" id="ts-timer-${globalIdx}" style="width:100%"></div></div>`;
+    html+='</div>';
+    el.innerHTML+=html;
+  });
+}
+
+function updateActionUI(){
+  const isMyTurn=mySeatIndex>=0&&gs.activeSeat===mySeatIndex;
+  const mySeat=mySeatIndex>=0?gs.seats[mySeatIndex]:null;
+  const statusEl=document.getElementById('action-status');
+
+  if(!mySeat||mySeat.folded){
+    disableActions();
+    statusEl.textContent='You folded. Waiting for next hand.';
+    statusEl.className='action-status';
+    return;
+  }
+  if(mySeat.sittingOut){
+    disableActions();
+    statusEl.textContent='You are sitting out.';
+    return;
+  }
+  if(gs.phase!=='playing'){
+    disableActions();
+    statusEl.textContent='Waiting...';
+    return;
+  }
+  if(!isMyTurn){
+    disableActions();
+    statusEl.textContent='Waiting for other players...';
+    statusEl.className='action-status';
+    return;
+  }
+
+  // My turn!
+  statusEl.textContent='Your turn! Choose an action.';
+  statusEl.className='action-status highlight';
+
+  const myBet=gs.roundBets?gs.roundBets[mySeatIndex]||0:0;
+  const callAmt=gs.currentBet-myBet;
+  const canCheck=callAmt<=0;
+
+  document.getElementById('btn-fold').disabled=false;
+  document.getElementById('btn-check').disabled=!canCheck;
+  document.getElementById('btn-call').disabled=canCheck;
+  document.getElementById('btn-call').textContent=canCheck?'Call':`Call ${callAmt}`;
+  document.getElementById('btn-raise').disabled=false;
+  document.getElementById('action-raise-row').style.display='flex';
+
+  const maxRaise=Math.min(mySeat.stack, 500);
+  const slider=document.getElementById('raise-slider');
+  slider.min=settings.smallBlind*2;
+  slider.max=Math.max(settings.smallBlind*2, maxRaise);
+  slider.value=settings.smallBlind*4;
+  document.getElementById('raise-amt').textContent=slider.value;
+}
+
+function disableActions(){
+  ['btn-fold','btn-check','btn-call','btn-raise'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.disabled=true;
+  });
+  const r=document.getElementById('action-raise-row');
+  if(r) r.style.display='none';
+}
+
+// =================== SHOWDOWN UI ===================
+function showShowdown(results){
+  const box=document.getElementById('sd-results');
+  box.innerHTML='';
+  const title=document.getElementById('sd-title');
+
+  const winners=results.filter(r=>r.winner);
+  if(results[0]&&results[0].byFold){
+    title.textContent='Opponent Folds!';
+  } else {
+    title.textContent='Showdown!';
+  }
+
+  results.forEach(r=>{
+    let tilesHtml='';
+    if(r.tiles&&r.tiles.length>0){
+      tilesHtml=r.tiles.map(t=>`<div class="sdr-tile"><span class="tsl">${t.l}</span><span class="tsp">${t.p}</span></div>`).join('');
+    }
+    let extra='';
+    if(r.winner) extra=r.byFold?'<span class="win">Wins pot! 🎉</span>':`<span class="win">Wins ${r.wonAmount||0}! 🎉</span>`;
+    if(r.splitTag) extra=`<span class="win">${r.splitTag}: +${r.wonAmount||0}</span>`;
+    if(r.folded) extra='<span style="color:rgba(255,255,255,.3)">Folded</span>';
+    const handHtml=r.hand&&r.hand.length>0?r.hand.map(t=>`<div class="sdr-tile"><span class="tsl">${t.l==='?'?'?':t.l}</span><span class="tsp">${t.l==='?'?'':t.p}</span></div>`).join(''):'';
+
+    box.innerHTML+=`
+      <div class="sd-player-row ${r.winner?'winner':''} ${r.folded?'folded':''}">
+        <div>
+          <div class="sdr-name">${escHtml(r.name)}</div>
+          <div class="sdr-word">${r.word?'"'+r.word+'"':''}</div>
+          <div style="display:flex;gap:4px;margin-top:4px">${handHtml}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="sdr-score">${r.score>0?r.score+' pts':''}</div>
+          <div style="display:flex;gap:3px;justify-content:flex-end;margin-top:4px">${tilesHtml}</div>
+          <div style="font-size:.8rem;margin-top:4px">${extra}</div>
+        </div>
+      </div>`;
+  });
+
+  document.getElementById('showdown-overlay').classList.add('show');
+  // Back to lobby after showdown
+  gs.phase='lobby';
+}
+
+function closeShowdown(){
+  document.getElementById('showdown-overlay').classList.remove('show');
+  if(gs.phase==='lobby'||gs.phase==='showdown'){
+    showLobby();
+  }
+}
+
+// =================== MODAL / SCREEN HELPERS ===================
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function showModal(id){document.getElementById(id).classList.add('show');}
+function closeModal(id){document.getElementById(id).classList.remove('show');}
+function showCreate(){showScreen('screen-create');}
+function showJoin(){showScreen('screen-join');}
+function showInGameMenu(){showModal('modal-ingame-menu');}
+
+function sendInviteSMS(){
+  if(!gameCode){ toast('No active game code','error'); return; }
+  document.getElementById('invite-code-big').textContent = gameCode;
+  showModal('modal-invite');
+}
+
+function copyInviteMessage(){
+  const names = {'2card':"Two-Card Hold'em",'5card':"Five-Card Hold'em",'5cardsplit':'Five-Card Split Pot'};
+  const type = names[settings.gameType] || "Scrabble Hold'em";
+  const msg =
+    `Hey! Join my Scrabble Hold'em game 🃏\n\n` +
+    `Game type: ${type}\n` +
+    `Blinds: ${settings.smallBlind}/${settings.smallBlind*2}\n\n` +
+    `To join:\n` +
+    `1. Open our Claude conversation\n` +
+    `2. Run the Scrabble Hold'em artifact\n` +
+    `3. Tap "Join Game" and enter code: ${gameCode}`;
+  navigator.clipboard.writeText(msg)
+    .then(()=>{ toast('Invite message copied — paste it anywhere!','success'); closeModal('modal-invite'); })
+    .catch(()=>{ toast('Could not copy — code is: ' + gameCode,'info'); });
+}
+
+function addChatMessage(from, text){
+  const el=document.getElementById('chat-messages');
+  const msg=document.createElement('div');
+  msg.className='chat-msg';
+  msg.innerHTML=`<span class="chat-from">${escHtml(from)}:</span> ${escHtml(text)}`;
+  el.appendChild(msg);
+  el.scrollTop=el.scrollHeight;
+}
+
+function toast(msg, kind='info'){
+  const container=document.getElementById('toast-container');
+  const el=document.createElement('div');
+  el.className='toast '+kind;
+  el.textContent=msg;
+  container.appendChild(el);
+  setTimeout(()=>{el.style.opacity='0';el.style.transform='translateX(20px)';el.style.transition='all .3s';setTimeout(()=>el.remove(),300);},3500);
+}
+
+function escHtml(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Raise slider
+document.getElementById('raise-slider').addEventListener('input',function(){
+  document.getElementById('raise-amt').textContent=this.value;
+});
+
+// Enter key for join code
+document.getElementById('join-name').addEventListener('keydown',e=>{if(e.key==='Enter')joinGame();});
+document.getElementById('join-code').addEventListener('keydown',e=>{if(e.key==='Enter')joinGame();});
+document.getElementById('create-name').addEventListener('keydown',e=>{if(e.key==='Enter')createGame();});
+
+// =================== INIT ===================
+(function(){
+  const params = new URLSearchParams(window.location.search);
+  const autoJoin = params.get('join');
+  if (autoJoin && /^[A-Z0-9]{5}$/i.test(autoJoin)) {
+    // Arrived via invite link — pre-fill code and go straight to join screen
+    showScreen('screen-join');
+    const el = document.getElementById('join-code');
+    if (el) el.value = autoJoin.toUpperCase();
+    toast('Game code pre-filled — enter your name and join!', 'info');
+  } else {
+    showScreen('screen-landing');
+  }
+})();
+</script>
+</body>
+</html>
