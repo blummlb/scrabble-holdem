@@ -152,7 +152,8 @@ h1,h2,h3{font-family:'Playfair Display',serif;}
 .ts-name{font-size:.6rem;color:rgba(255,255,255,.75);font-family:'Playfair Display',serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72px;text-align:center;line-height:1.2;}
 .ts-stack{font-size:.58rem;color:var(--gold);text-align:center;white-space:nowrap;}
 .ts-bet{font-size:.55rem;color:rgba(255,255,255,.5);font-style:italic;text-align:center;}
-.ts-dealer{position:absolute;top:-3px;right:-3px;background:var(--wood);color:#fff;font-size:.48rem;border-radius:50%;width:14px;height:14px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;}
+.ts-dealer{display:none;} /* legacy, replaced by ts-dealer-btn */
+.ts-dealer-btn{background:var(--gold);color:#1a0a00;font-size:.6rem;font-weight:900;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;box-shadow:0 0 6px rgba(212,168,67,.7);border:1.5px solid rgba(255,255,255,.4);margin-bottom:2px;flex-shrink:0;}
 .ts-timer{position:absolute;bottom:-5px;left:50%;transform:translateX(-50%);width:36px;height:3px;background:rgba(255,255,255,.1);border-radius:2px;}
 .ts-timer-bar{height:100%;background:var(--gold);border-radius:2px;transition:width .5s linear;}
 .ts-timer-bar.urgent{background:var(--danger);}
@@ -570,6 +571,20 @@ h1,h2,h3{font-family:'Playfair Display',serif;}
     <div id="sd-footer" style="margin-top:12px;display:flex;flex-direction:column;align-items:center;gap:8px;">
       <div id="sd-countdown" style="font-family:'Playfair Display',serif;color:rgba(255,255,255,.4);font-size:.85rem;min-height:20px;"></div>
     </div>
+  </div>
+</div>
+
+<!-- REBUY MODAL -->
+<div class="modal-overlay" id="modal-rebuy">
+  <div class="modal-box" style="max-width:360px;">
+    <h3 style="color:var(--danger);">💸 Out of Chips!</h3>
+    <p style="color:rgba(255,255,255,.6);font-size:.85rem;margin-bottom:16px;">You can rebuy to continue playing. Time remaining: <span id="rebuy-timer" style="color:var(--gold);font-weight:700;">2:00</span></p>
+    <div class="form-group">
+      <label>Rebuy Amount</label>
+      <input type="number" id="rebuy-amount" value="1000" min="100" step="100">
+    </div>
+    <button class="btn btn-gold btn-full" onclick="confirmRebuy()">Rebuy Now</button>
+    <button class="btn btn-danger btn-full" onclick="declineRebuy()" style="margin-top:8px;">Leave Game</button>
   </div>
 </div>
 
@@ -1128,6 +1143,24 @@ function handleHostMessage(peerId, msg){
       addChatMessage(sender, msg.text);
       hostBroadcast(chatMsg);
       break;
+    case 'REBUY':{
+      const rIdx=gs.seats.findIndex(s=>s&&s.peerId===peerId);
+      if(rIdx>=0 && gs.seats[rIdx].rebuyOffered && gs.seats[rIdx].stack<=0){
+        const seat=gs.seats[rIdx];
+        if(Date.now() <= (seat.rebuyDeadline||0)){
+          const amount=Math.min(Math.max(10,msg.amount||settings.buyinLimit), settings.buyinLimit);
+          seat.stack=amount;
+          seat.sittingOut=false;
+          seat.rebuyOffered=false;
+          seat.rebuyDeadline=null;
+          broadcastToast(`${seat.name} rebuys for ${amount} chips!`,'success');
+          broadcastState();
+        } else {
+          sendToPeer(peerId,{type:'ERROR',msg:'Rebuy window expired.'});
+        }
+      }
+      break;
+    }
     case 'LEAVE':{
       const lIdx=gs.seats.findIndex(s=>s&&s.peerId===peerId);
       if(lIdx>=0 && gs.phase==='playing'){
@@ -1222,6 +1255,9 @@ function handleClientMessage(msg){
     case 'GAME_OVER':
       showGameOver(msg.reason, msg.standings);
       break;
+    case 'REBUY_OFFER':
+      showRebuyModal(msg.deadline, msg.buyinLimit);
+      break;
     case 'CHAT':
       addChatMessage(msg.name, msg.text);
       break;
@@ -1291,33 +1327,48 @@ function startNewHand(){
   gs.deck=shuffle(buildDeck());
   gs.community=[];
   gs.pot=0;
-  gs.currentBet=settings.smallBlind*2; // big blind
   gs.handNumber++;
   gs.round='preflop';
   gs.roundBets={};
+  gs.hasActed={};  // tracks who has had a chance to act this betting round
 
-  // Reset seats
-  gs.seats.forEach((s,i)=>{
-    if(s){s.folded=false; s.hand=[]; s.bet=0;}
-  });
+  // Reset per-hand seat state
+  gs.seats.forEach(s=>{if(s){s.folded=false; s.hand=[]; s.bet=0;}});
 
-  // Rotate dealer
+  // Active seats in seat-index order
   const playerSeats=gs.seats.map((s,i)=>s&&!s.sittingOut&&s.stack>0?i:-1).filter(i=>i>=0);
   if(playerSeats.length===0) return;
-  let dealerIdx=playerSeats[(playerSeats.indexOf(gs.dealerSeat)+1)%playerSeats.length];
-  gs.dealerSeat=dealerIdx;
 
-  // Deal hole tiles
+  // Rotate dealer button one seat to the left (next in playerSeats)
+  const prevDealerPos = playerSeats.indexOf(gs.dealerSeat);
+  const dealerIdx = playerSeats[(prevDealerPos+1) % playerSeats.length];
+  gs.dealerSeat = dealerIdx;
+
+  // Deal hole tiles (starting left of dealer, going around)
   const holeCount=getHoleCount();
+  // Order deal starting from seat after dealer
+  const dealerPos=playerSeats.indexOf(dealerIdx);
+  const dealOrder=[...playerSeats.slice(dealerPos+1), ...playerSeats.slice(0,dealerPos+1)];
   for(let h=0;h<holeCount;h++){
-    for(const si of playerSeats){
+    for(const si of dealOrder){
       gs.seats[si].hand.push(gs.deck.pop());
     }
   }
 
-  // Post blinds
-  const sbIdx=playerSeats[(playerSeats.indexOf(dealerIdx)+1)%playerSeats.length];
-  const bbIdx=playerSeats[(playerSeats.indexOf(dealerIdx)+2)%playerSeats.length];
+  // Blind assignments
+  // Heads-up (2 players): dealer = SB, other = BB; preflop dealer acts first
+  // 3+ players: SB = left of dealer, BB = left of SB; preflop UTG (left of BB) acts first
+  let sbIdx, bbIdx, firstToAct;
+  if(playerSeats.length===2){
+    sbIdx = dealerIdx;                                      // dealer is SB
+    bbIdx = playerSeats[(playerSeats.indexOf(dealerIdx)+1)%playerSeats.length];
+    firstToAct = dealerIdx;                                 // dealer/SB acts first preflop HU
+  } else {
+    sbIdx = playerSeats[(playerSeats.indexOf(dealerIdx)+1)%playerSeats.length];
+    bbIdx = playerSeats[(playerSeats.indexOf(dealerIdx)+2)%playerSeats.length];
+    firstToAct = playerSeats[(playerSeats.indexOf(bbIdx)+1)%playerSeats.length];
+  }
+
   const sbAmt=Math.min(settings.smallBlind, gs.seats[sbIdx].stack);
   const bbAmt=Math.min(settings.smallBlind*2, gs.seats[bbIdx].stack);
   gs.seats[sbIdx].stack-=sbAmt; gs.seats[sbIdx].bet=sbAmt;
@@ -1326,12 +1377,13 @@ function startNewHand(){
   gs.roundBets[sbIdx]=sbAmt;
   gs.roundBets[bbIdx]=bbAmt;
   gs.currentBet=bbAmt;
+  // BB has not "acted" yet (they have option to raise) — SB hasn't acted yet either
+  // hasActed stays empty; action starts at firstToAct
 
-  // First to act preflop = after big blind
-  const afterBB=playerSeats[(playerSeats.indexOf(bbIdx)+1)%playerSeats.length];
-  gs.activeSeat=afterBB;
+  gs.activeSeat=firstToAct;
+  gs.sbSeat=sbIdx;
+  gs.bbSeat=bbIdx;
 
-  // Switch to game screen
   broadcastStateToAll();
   broadcastToast('Hand #'+gs.handNumber+' started!','info');
 
@@ -1343,10 +1395,7 @@ function startNewHand(){
     startActionTimer();
   }
 
-  // Reset idle timer
   if(myRole === 'host') resetIdleTimer();
-
-  // Switch to game screen for host
   showGameScreen();
 }
 
@@ -1398,8 +1447,24 @@ function processBetweenHandActions(){
       seat.pendingJoin = false;
       seat.sittingOut = false;
     }
-    // Remove busted players (stack = 0)
-    if(gs.seats[i] && gs.seats[i].stack <= 0 && !gs.seats[i].pendingJoin){
+    // Busted players (stack = 0): sit them out and give 2-minute rebuy window
+    if(gs.seats[i] && gs.seats[i].stack <= 0 && !gs.seats[i].pendingJoin && !gs.seats[i].isAI){
+      if(!gs.seats[i].rebuyOffered){
+        gs.seats[i].sittingOut = true;
+        gs.seats[i].rebuyOffered = true;
+        gs.seats[i].rebuyDeadline = Date.now() + 2*60*1000;
+        broadcastToast(`${gs.seats[i].name} is out of chips — 2 minutes to rebuy!`, 'info');
+        // Notify that specific peer
+        sendToPeer(gs.seats[i].peerId, {type:'REBUY_OFFER', deadline: gs.seats[i].rebuyDeadline, buyinLimit: settings.buyinLimit});
+      }
+      // If rebuy window has expired, remove them
+      if(Date.now() > gs.seats[i].rebuyDeadline){
+        broadcastToast(`${gs.seats[i].name} did not rebuy and has left.`, 'info');
+        gs.seats[i] = null;
+      }
+    }
+    // AI busted: remove immediately
+    if(gs.seats[i] && gs.seats[i].stack <= 0 && gs.seats[i].isAI){
       broadcastToast(`${gs.seats[i].name} is out of chips!`, 'info');
       gs.seats[i] = null;
     }
@@ -1495,6 +1560,9 @@ function processAction(seatIdx, action, amount){
   const seat=gs.seats[seatIdx];
   if(!seat) return;
 
+  if(!gs.hasActed) gs.hasActed={};
+  gs.hasActed[seatIdx]=true;
+
   if(action==='fold'){
     seat.folded=true;
     broadcastToast(`${seat.name} folds`,'info');
@@ -1511,13 +1579,15 @@ function processAction(seatIdx, action, amount){
     seat.stack-=raiseAmt; seat.bet=(seat.bet||0)+raiseAmt; gs.pot+=raiseAmt;
     gs.roundBets[seatIdx]=(gs.roundBets[seatIdx]||0)+raiseAmt;
     gs.currentBet=gs.roundBets[seatIdx];
+    // A raise reopens action: clear hasActed for all active opponents
+    gs.seats.forEach((s,i)=>{ if(s && !s.folded && !s.sittingOut && i!==seatIdx) delete gs.hasActed[i]; });
     broadcastToast(`${seat.name} raises to ${gs.currentBet}`,'info');
   }
 
   broadcastStateToAll();
 
-  // Check if hand over (one player left)
-  const activePlayers=gs.seats.filter((s,i)=>s&&!s.folded&&!s.sittingOut&&s.stack>=0);
+  // Check if hand over (only one non-folded, non-sittingOut player left)
+  const activePlayers=gs.seats.filter(s=>s&&!s.folded&&!s.sittingOut&&s.stack>=0);
   if(activePlayers.length===1){
     endHandFold(activePlayers[0]);
     return;
@@ -1532,34 +1602,48 @@ function processAction(seatIdx, action, amount){
 }
 
 function isBettingClosed(){
-  const active=gs.seats.filter((s,i)=>s&&!s.folded&&!s.sittingOut);
+  // Betting is closed when every active player has acted AND all bets are equal (or all-in)
+  if(!gs.hasActed) gs.hasActed={};
   for(const [i,s] of gs.seats.entries()){
-    if(!s||s.folded||s.sittingOut) continue;
+    if(!s || s.folded || s.sittingOut) continue;
+    // Player hasn't acted yet this round
+    if(!gs.hasActed[i]) return false;
+    // Player still owes chips (and has them)
     const myBet=gs.roundBets[i]||0;
-    if(myBet<gs.currentBet && s.stack>0) return false;
+    if(myBet < gs.currentBet && s.stack > 0) return false;
   }
   return true;
 }
 
 function advanceTurn(){
+  // Active seats = not folded, not sitting out, have chips or are all-in (stack>=0)
   const playerSeats=gs.seats.map((s,i)=>s&&!s.folded&&!s.sittingOut&&s.stack>=0?i:-1).filter(i=>i>=0);
   if(playerSeats.length===0) return;
-  const cur=playerSeats.indexOf(gs.activeSeat);
-  gs.activeSeat=playerSeats[(cur+1)%playerSeats.length];
-  broadcastStateToAll();
-  const activeSeat=gs.seats[gs.activeSeat];
-  if(activeSeat&&activeSeat.isAI){
-    scheduleAIAction(gs.activeSeat);
-  } else {
-    startActionTimer();
+  // Find next player after current who hasn't acted OR still owes chips
+  const startPos=playerSeats.indexOf(gs.activeSeat);
+  for(let offset=1; offset<=playerSeats.length; offset++){
+    const candidateIdx=playerSeats[(startPos+offset)%playerSeats.length];
+    const s=gs.seats[candidateIdx];
+    if(!s) continue;
+    const myBet=gs.roundBets[candidateIdx]||0;
+    const needsToAct=!gs.hasActed[candidateIdx] || (myBet<gs.currentBet && s.stack>0);
+    if(needsToAct){
+      gs.activeSeat=candidateIdx;
+      broadcastStateToAll();
+      if(s.isAI){ scheduleAIAction(gs.activeSeat); } else { startActionTimer(); }
+      return;
+    }
   }
+  // No one needs to act — betting is closed
+  advanceStreet();
 }
 
 function advanceStreet(){
-  // Collect bets
-  gs.seats.forEach((s,i)=>{if(s){s.bet=0;}});
+  // Reset betting state for new street
+  gs.seats.forEach(s=>{if(s) s.bet=0;});
   gs.roundBets={};
   gs.currentBet=0;
+  gs.hasActed={};  // everyone must act again on each new street
 
   if(gs.round==='preflop'){
     gs.round='flop';
@@ -1576,10 +1660,20 @@ function advanceStreet(){
     return;
   }
 
-  // Set first actor (first active after dealer)
+  // Post-flop: first actor is earliest active seat starting from SB (left of dealer)
+  // In heads-up post-flop, the non-dealer (BB) acts first
   const playerSeats=gs.seats.map((s,i)=>s&&!s.folded&&!s.sittingOut&&s.stack>=0?i:-1).filter(i=>i>=0);
-  const dealerPos=playerSeats.indexOf(gs.dealerSeat);
-  gs.activeSeat=playerSeats[(dealerPos+1)%playerSeats.length];
+  if(playerSeats.length===0){ doShowdown(); return; }
+
+  // Find SB position (one left of dealer), then walk clockwise to first active player
+  const dealerPos=gs.dealerSeat;
+  const n=gs.seats.length;
+  let firstActor=null;
+  for(let offset=1; offset<=n; offset++){
+    const idx=(dealerPos+offset)%n;
+    if(playerSeats.includes(idx)){ firstActor=idx; break; }
+  }
+  gs.activeSeat = firstActor !== null ? firstActor : playerSeats[0];
 
   broadcastStateToAll();
   const streetActiveSeat=gs.seats[gs.activeSeat];
@@ -1710,6 +1804,44 @@ function standUpFromGame(){
   sendToHost({type:'STAND_UP', peerId:myPeerId});
   closeModal('modal-ingame-menu');
   if(gs.phase === 'playing') toast('You will stand up after this hand.','info');
+}
+
+// =================== REBUY ===================
+let rebuyTimerInterval = null;
+
+function showRebuyModal(deadline, buyinLimit){
+  clearInterval(rebuyTimerInterval);
+  const amountEl = document.getElementById('rebuy-amount');
+  amountEl.max = buyinLimit;
+  amountEl.value = Math.min(buyinLimit, 1000);
+  showModal('modal-rebuy');
+
+  rebuyTimerInterval = setInterval(() => {
+    const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    const mins = Math.floor(remaining/60);
+    const secs = remaining % 60;
+    const el = document.getElementById('rebuy-timer');
+    if(el) el.textContent = `${mins}:${secs.toString().padStart(2,'0')}`;
+    if(remaining <= 0){
+      clearInterval(rebuyTimerInterval);
+      // Auto-decline
+      declineRebuy();
+    }
+  }, 500);
+}
+
+function confirmRebuy(){
+  clearInterval(rebuyTimerInterval);
+  const amount = parseInt(document.getElementById('rebuy-amount').value) || 1000;
+  sendToHost({type:'REBUY', amount, peerId: myPeerId});
+  closeModal('modal-rebuy');
+  toast('Rebuy request sent!','success');
+}
+
+function declineRebuy(){
+  clearInterval(rebuyTimerInterval);
+  closeModal('modal-rebuy');
+  leaveGame();
 }
 
 function leaveGame(){
@@ -1971,6 +2103,9 @@ function renderOvalSeats(){
 
     let html = `<div class="${cls}" id="tseat-${i}" style="left:${(left*100).toFixed(1)}%;top:${(top*100).toFixed(1)}%;">`;
 
+    // Dealer button (shown outside ring, above avatar)
+    if (isDealer && seat) html += `<div class="ts-dealer-btn">D</div>`;
+
     // Avatar ring
     html += `<div class="ts-avatar-ring">`;
     if (seat) {
@@ -1978,7 +2113,6 @@ function renderOvalSeats(){
     } else {
       html += '·';
     }
-    if (isDealer && seat) html += `<div class="ts-dealer">D</div>`;
     html += `<div class="ts-timer"><div class="ts-timer-bar" id="ts-timer-${i}" style="width:100%"></div></div>`;
     html += `</div>`;
 
@@ -2000,8 +2134,9 @@ function renderOvalSeats(){
         html += '</div>';
       }
       if (seat.folded) html += `<div style="font-size:.55rem;color:rgba(255,255,255,.4)">Folded</div>`;
-      if (seat.pendingLeave) html += `<div style="font-size:.52rem;color:#f5a623;text-align:center;">⏳ leaving…</div>`;
-      if (seat.pendingJoin)  html += `<div style="font-size:.52rem;color:#9bceff;text-align:center;">⏳ joining…</div>`;
+      if (seat.pendingLeave)   html += `<div style="font-size:.52rem;color:#f5a623;text-align:center;">⏳ leaving…</div>`;
+      if (seat.pendingJoin)    html += `<div style="font-size:.52rem;color:#9bceff;text-align:center;">⏳ joining…</div>`;
+      if (seat.rebuyOffered)   html += `<div style="font-size:.52rem;color:#f5a623;text-align:center;">💸 rebuy?</div>`;
     } else {
       html += `<div class="ts-name" style="opacity:.25">—</div>`;
     }
