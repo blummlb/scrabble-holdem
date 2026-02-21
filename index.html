@@ -881,39 +881,39 @@ function abortConnect() {
 }
 
 // ---- INVITE ----
+function _inviteLink() {
+  return 'https://blummlb.github.io/scrabble-holdem/?join=' + gameCode;
+}
+
+function _inviteGameType() {
+  return ({'2card':"Two-Card Hold'em",'5card':"Five-Card Hold'em",'5cardsplit':'Five-Card Split Pot'})[settings.gameType] || "Scrabble Hold'em";
+}
+
 function sendInviteSMS() {
   if (!gameCode) { toast('No active game code', 'error'); return; }
   document.getElementById('invite-code-big').textContent = gameCode;
-  const link = 'https://blummlb.github.io/scrabble-holdem/?join=' + gameCode;
-  document.getElementById('invite-link-input').value = link;
+  document.getElementById('invite-link-input').value = _inviteLink();
   showModal('modal-invite');
 }
 
 function copyInviteLink() {
-  const link = document.getElementById('invite-link-input').value;
-  const names = {'2card':"Two-Card Hold'em",'5card':"Five-Card Hold'em",'5cardsplit':'Five-Card Split Pot'};
-  const type  = names[settings.gameType] || "Scrabble Hold'em";
-  const msg   = `Join my Scrabble Hold'em game (${type})!\n\nTap this link to play:\n${link}`;
+  const link = _inviteLink();
+  const msg = `Join my Scrabble Hold'em game (${_inviteGameType()})!\n\nCode: ${gameCode}\nLink: ${link}`;
   navigator.clipboard.writeText(msg)
     .then(() => { toast('Invite copied! Paste it into any message app.', 'success'); closeModal('modal-invite'); })
     .catch(() => {
-      // Fallback: select the input
       const el = document.getElementById('invite-link-input');
-      el.select(); document.execCommand('copy');
+      if (el) { el.select(); document.execCommand('copy'); }
       toast('Link copied!', 'success');
     });
 }
 
 function shareInvite() {
-  const link = document.getElementById('invite-link-input').value;
-  const names = {'2card':"Two-Card Hold'em",'5card':"Five-Card Hold'em",'5cardsplit':'Five-Card Split Pot'};
-  const type  = names[settings.gameType] || "Scrabble Hold'em";
+  const link = _inviteLink();
+  const msg  = `Join my Scrabble Hold'em game (${_inviteGameType()})!\n\nCode: ${gameCode}\nLink: ${link}`;
   if (navigator.share) {
-    navigator.share({
-      title: "Join my Scrabble Hold'em game!",
-      text:  `Join my ${type} game — tap the link to play!`,
-      url:   link,
-    }).catch(() => {});
+    navigator.share({ title: "Join my Scrabble Hold'em game!", text: msg, url: link })
+      .catch(e => { if (e.name !== 'AbortError') copyInviteLink(); });
   } else {
     copyInviteLink();
   }
@@ -1826,27 +1826,6 @@ function showCreate(){showScreen('screen-create');}
 function showJoin(){showScreen('screen-join');}
 function showInGameMenu(){showModal('modal-ingame-menu');}
 
-function sendInviteSMS(){
-  if(!gameCode){ toast('No active game code','error'); return; }
-  document.getElementById('invite-code-big').textContent = gameCode;
-  showModal('modal-invite');
-}
-
-function copyInviteMessage(){
-  const names = {'2card':"Two-Card Hold'em",'5card':"Five-Card Hold'em",'5cardsplit':'Five-Card Split Pot'};
-  const type = names[settings.gameType] || "Scrabble Hold'em";
-  const msg =
-    `Hey! Join my Scrabble Hold'em game 🃏\n\n` +
-    `Game type: ${type}\n` +
-    `Blinds: ${settings.smallBlind}/${settings.smallBlind*2}\n\n` +
-    `To join:\n` +
-    `1. Open our Claude conversation\n` +
-    `2. Run the Scrabble Hold'em artifact\n` +
-    `3. Tap "Join Game" and enter code: ${gameCode}`;
-  navigator.clipboard.writeText(msg)
-    .then(()=>{ toast('Invite message copied — paste it anywhere!','success'); closeModal('modal-invite'); })
-    .catch(()=>{ toast('Could not copy — code is: ' + gameCode,'info'); });
-}
 
 function addChatMessage(from, text){
   const el=document.getElementById('chat-messages');
