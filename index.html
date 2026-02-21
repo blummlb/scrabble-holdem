@@ -152,8 +152,25 @@ h1,h2,h3{font-family:'Playfair Display',serif;}
 .ts-name{font-size:.6rem;color:rgba(255,255,255,.75);font-family:'Playfair Display',serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72px;text-align:center;line-height:1.2;}
 .ts-stack{font-size:.58rem;color:var(--gold);text-align:center;white-space:nowrap;}
 .ts-bet{font-size:.55rem;color:rgba(255,255,255,.5);font-style:italic;text-align:center;}
-.ts-dealer{display:none;} /* legacy, replaced by ts-dealer-btn */
-.ts-dealer-btn{background:var(--gold);color:#1a0a00;font-size:.6rem;font-weight:900;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;box-shadow:0 0 6px rgba(212,168,67,.7);border:1.5px solid rgba(255,255,255,.4);margin-bottom:2px;flex-shrink:0;}
+.ts-dealer{display:none;} /* legacy */
+.ts-dealer-btn{display:none;} /* legacy */
+/* Dealer button lives on the felt */
+.dealer-button-felt{
+  position:absolute;
+  transform:translate(-50%,-50%);
+  width:34px;height:34px;
+  border-radius:50%;
+  background:radial-gradient(circle at 35% 30%, #fff9e6, #f0c040 60%, #c8920a);
+  color:#1a0a00;
+  font-size:.85rem;font-weight:900;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Playfair Display',serif;
+  box-shadow:0 2px 8px rgba(0,0,0,.6), 0 0 0 2px rgba(212,168,67,.5), inset 0 1px 2px rgba(255,255,255,.6);
+  border:2px solid #8a6000;
+  z-index:10;
+  pointer-events:none;
+  letter-spacing:0;
+}
 .ts-timer{position:absolute;bottom:-5px;left:50%;transform:translateX(-50%);width:36px;height:3px;background:rgba(255,255,255,.1);border-radius:2px;}
 .ts-timer-bar{height:100%;background:var(--gold);border-radius:2px;transition:width .5s linear;}
 .ts-timer-bar.urgent{background:var(--danger);}
@@ -1204,11 +1221,23 @@ function buildSafeState(viewerPeerId){
 }
 
 function broadcastStateToAll(){
+  // Send safe (hidden hands) state to each remote client
   for(const [peerId, conn] of Object.entries(clientConns)){
     const safeGs=buildSafeState(peerId);
     try{conn.send({type:'STATE', gs:safeGs, settings});}catch(e){}
   }
-  handleClientMessage({type:'STATE', gs:buildSafeState(myPeerId), settings});
+  // Update host UI without replacing gs — host always has the authoritative gs
+  updateHostUI();
+}
+
+function updateHostUI(){
+  // Update UI for the host player without touching the gs object
+  updateMySeatIndex();
+  if(document.getElementById('screen-game').classList.contains('active')){
+    updateGameUI();
+  } else if(document.getElementById('screen-lobby').classList.contains('active')){
+    updateLobbyUI();
+  }
 }
 
 // =================== CLIENT MESSAGE HANDLER ===================
@@ -1975,8 +2004,6 @@ function showGameScreen(){
   if(!document.getElementById("screen-game").classList.contains("active")) showScreen("screen-game");
   document.getElementById("game-code-bar").textContent="Code: "+gameCode;
   updateMySeatIndex();
-  document.getElementById("my-hand-panel").style.display=mySeatIndex>=0?"block":"none";
-  document.getElementById("observer-note").style.display=mySeatIndex>=0?"none":"block";
   updateGameUI();
 }
 
@@ -1994,6 +2021,10 @@ function updateGameUI(){
   if(!document.getElementById('screen-game').classList.contains('active')) return;
 
   updateMySeatIndex();
+
+  // Panel visibility — always recompute
+  document.getElementById("my-hand-panel").style.display = mySeatIndex>=0 ? "block" : "none";
+  document.getElementById("observer-note").style.display = mySeatIndex>=0 ? "none" : "block";
 
   // Round pips
   const rounds=['pre','flop','turn','river'];
@@ -2066,27 +2097,29 @@ function updateGameUI(){
   updateActionUI();
 }
 
+function seatAngle(seatIdx, myIdx, n) {
+  // Returns angle in radians for a seat, with myIdx at bottom (angleDeg=180)
+  const relIdx = (seatIdx - myIdx + n) % n;
+  const angleDeg = (relIdx / n) * 360 + 180;
+  return (angleDeg * Math.PI) / 180;
+}
+
 function renderOvalSeats(){
   const arena = document.getElementById('oval-arena');
   if (!arena) return;
-  // Remove old tokens
-  arena.querySelectorAll('.oval-seat').forEach(el => el.remove());
+  arena.querySelectorAll('.oval-seat, .dealer-button-felt').forEach(el => el.remove());
 
   const n = gs.seats.length;
   if (n === 0) return;
 
-  // Find my index for rotation: put me at bottom (angle=90deg from bottom = 270deg from top)
   const myIdx = mySeatIndex >= 0 ? mySeatIndex : 0;
-  // Positions: angle 0 = top, clockwise. We want myIdx at bottom (180deg)
-  // rx/ry as fraction of container (0..1), center at 0.5
-  const rx = 0.46, ry = 0.46; // oval radii
+  const rx = 0.46, ry = 0.46;
   const cx = 0.5, cy = 0.5;
+  // Inner felt radius for dealer button (on table surface, not at seat edge)
+  const drx = 0.28, dry = 0.28;
 
   gs.seats.forEach((seat, i) => {
-    // Rotate so myIdx is at bottom
-    const relIdx = (i - myIdx + n) % n;
-    const angleDeg = (relIdx / n) * 360 + 180; // 180 = bottom
-    const angleRad = (angleDeg * Math.PI) / 180;
+    const angleRad = seatAngle(i, myIdx, n);
     const left = cx + rx * Math.sin(angleRad);
     const top  = cy - ry * Math.cos(angleRad);
 
@@ -2103,16 +2136,9 @@ function renderOvalSeats(){
 
     let html = `<div class="${cls}" id="tseat-${i}" style="left:${(left*100).toFixed(1)}%;top:${(top*100).toFixed(1)}%;">`;
 
-    // Dealer button (shown outside ring, above avatar)
-    if (isDealer && seat) html += `<div class="ts-dealer-btn">D</div>`;
-
     // Avatar ring
     html += `<div class="ts-avatar-ring">`;
-    if (seat) {
-      html += seat.isAI ? '🤖' : (isMe ? '😊' : '🧑');
-    } else {
-      html += '·';
-    }
+    html += seat ? (seat.isAI ? '🤖' : (isMe ? '😊' : '🧑')) : '·';
     html += `<div class="ts-timer"><div class="ts-timer-bar" id="ts-timer-${i}" style="width:100%"></div></div>`;
     html += `</div>`;
 
@@ -2121,7 +2147,6 @@ function renderOvalSeats(){
       html += `<div class="ts-stack">🪙${seat.stack.toLocaleString()}</div>`;
       const bet = gs.roundBets ? gs.roundBets[i] || 0 : 0;
       if (bet > 0) html += `<div class="ts-bet">↑${bet}</div>`;
-      // Hole tiles
       if ((seat.hand||[]).length > 0) {
         html += '<div class="ts-hole-tiles">';
         for (const t of seat.hand) {
@@ -2133,15 +2158,24 @@ function renderOvalSeats(){
         }
         html += '</div>';
       }
-      if (seat.folded) html += `<div style="font-size:.55rem;color:rgba(255,255,255,.4)">Folded</div>`;
-      if (seat.pendingLeave)   html += `<div style="font-size:.52rem;color:#f5a623;text-align:center;">⏳ leaving…</div>`;
-      if (seat.pendingJoin)    html += `<div style="font-size:.52rem;color:#9bceff;text-align:center;">⏳ joining…</div>`;
-      if (seat.rebuyOffered)   html += `<div style="font-size:.52rem;color:#f5a623;text-align:center;">💸 rebuy?</div>`;
+      if (seat.folded)       html += `<div style="font-size:.55rem;color:rgba(255,255,255,.4)">Folded</div>`;
+      if (seat.pendingLeave) html += `<div style="font-size:.52rem;color:#f5a623;text-align:center;">⏳ leaving…</div>`;
+      if (seat.pendingJoin)  html += `<div style="font-size:.52rem;color:#9bceff;text-align:center;">⏳ joining…</div>`;
+      if (seat.rebuyOffered) html += `<div style="font-size:.52rem;color:#f5a623;text-align:center;">💸 rebuy?</div>`;
     } else {
       html += `<div class="ts-name" style="opacity:.25">—</div>`;
     }
     html += '</div>';
     arena.insertAdjacentHTML('beforeend', html);
+
+    // Dealer button on the felt — placed on the table surface toward this seat
+    if (isDealer && seat) {
+      const dbLeft = cx + drx * Math.sin(angleRad);
+      const dbTop  = cy - dry * Math.cos(angleRad);
+      arena.insertAdjacentHTML('beforeend',
+        `<div class="dealer-button-felt" style="left:${(dbLeft*100).toFixed(1)}%;top:${(dbTop*100).toFixed(1)}%;">D</div>`
+      );
+    }
   });
 }
 
