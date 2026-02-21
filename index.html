@@ -53,6 +53,8 @@ h1,h2,h3{font-family:'Playfair Display',serif;}
 .btn-outline{background:transparent;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.7);}
 .btn-outline:not(:disabled):hover{border-color:var(--gold);color:var(--gold);}
 .btn-danger{background:#5c3333;color:#ffb3b3;border:1px solid #8c4444;}
+.btn-word-check{background:rgba(255,255,255,.06);color:rgba(255,255,255,.45);border:1px solid rgba(255,255,255,.1);border-radius:20px;font-size:.7rem;letter-spacing:.1em;padding:4px 14px;cursor:pointer;font-family:inherit;transition:background .15s,color .15s;}
+.btn-word-check:hover{background:rgba(255,255,255,.12);color:rgba(255,255,255,.75);}
 .btn-danger:not(:disabled):hover{background:#7a3f3f;}
 .btn-safe{background:#2d5a3d;color:#9ef5c0;border:1px solid #3d7a52;}
 .btn-safe:not(:disabled):hover{background:#3a7050;}
@@ -149,6 +151,24 @@ h1,h2,h3{font-family:'Playfair Display',serif;}
 .oval-seat.sitting-out .ts-avatar-ring{opacity:.4;}
 .oval-seat.empty .ts-avatar-ring{opacity:.15;}
 @keyframes pulse-seat{from{box-shadow:0 0 6px rgba(212,168,67,.3);}to{box-shadow:0 0 16px rgba(212,168,67,.7);}}
+
+/* ACTION SPOTLIGHT — translucent cone beam from table center toward active player */
+.action-spotlight{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  z-index:2;
+  opacity:0;
+  transition:opacity .4s ease;
+  border-radius:50%;
+}
+.action-spotlight.visible{
+  animation:spotlight-breathe 1.8s ease-in-out infinite alternate;
+}
+@keyframes spotlight-breathe{
+  from{opacity:.65;}
+  to{opacity:1;}
+}
 .ts-name{font-size:.6rem;color:rgba(255,255,255,.75);font-family:'Playfair Display',serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72px;text-align:center;line-height:1.2;}
 .ts-stack{font-size:.58rem;color:var(--gold);text-align:center;white-space:nowrap;}
 .ts-bet{font-size:.55rem;color:rgba(255,255,255,.5);font-style:italic;text-align:center;}
@@ -289,6 +309,7 @@ h1,h2,h3{font-family:'Playfair Display',serif;}
       <p>Enter a 5-digit code to join a table</p>
     </div>
   </div>
+  <div id="dict-status" style="margin-top:18px;font-size:.72rem;letter-spacing:.05em;text-align:center;color:rgba(255,255,255,.4);">📖 Loading dictionary…</div>
 </div>
 
 <!-- CREATE GAME -->
@@ -521,6 +542,22 @@ h1,h2,h3{font-family:'Playfair Display',serif;}
       </div>
     </div>
     <div id="observer-note" style="text-align:center;color:rgba(255,255,255,.3);font-style:italic;font-size:.85rem;padding:8px;">You are observing. <span style="color:var(--gold);cursor:pointer" onclick="showSitDownModal()">Sit down to play →</span></div>
+
+    <!-- Word Checker -->
+    <div style="text-align:center;padding:4px 0 6px;">
+      <button class="btn-word-check" onclick="toggleWordChecker()">📖 Check Word</button>
+    </div>
+    <div id="word-checker-panel" style="display:none;padding:0 12px 8px;">
+      <div style="display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:8px 12px;">
+        <input id="word-check-input" type="text" maxlength="7" autocomplete="off" autocorrect="off"
+          spellcheck="false" autocapitalize="characters"
+          placeholder="Type a word…"
+          style="flex:1;background:transparent;border:none;outline:none;font-size:1.1rem;font-family:'Playfair Display',serif;letter-spacing:.12em;text-transform:uppercase;color:#fff;min-width:0;"
+          oninput="checkWordLive(this.value)">
+        <span id="word-check-result" style="font-size:.72rem;font-weight:700;letter-spacing:.08em;min-width:52px;text-align:right;transition:color .15s;"></span>
+        <button onclick="toggleWordChecker()" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:1rem;cursor:pointer;padding:0 2px;line-height:1;">✕</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -631,77 +668,148 @@ const LETTER_PTS={};
 for(const t of TILE_DIST) LETTER_PTS[t.l]=t.p;
 
 // =================== DICTIONARY ===================
-const WORDS_RAW=`AA AB ABLE ABODE ABOUT ACE ACED ACES ACHE ACHED ACID ACME ACNE ACRE ACT ACTED ACTS ADD ADDS ADMIT ADO ADS
-ADULT AGE AGED AGES AGILE AGO AGREE AHEAD AID AIDE AIDED AIDS AIM AIMED AIMS AIR AIRED AIRY ALARM ALE ALERT
-ALES ALIVE ALONE ALONG ALTER AMBER AMEND AND ANGEL ANGER ANGLE ANKLE ANT ANTE ANTED ANTES ANTI ANTS ANVIL
-ANY APE APED APES APPLY APRON APT ARC ARCS ARE ARGUE ARISE ARM ARMED ARMOR ARMS ARROW ART ARTS ASH ASIDE ASK
-ATE ATLAS ATOP AUDIT AXE AXED AXES AXIS BACK BAD BADE BAG BAGS BAIL BAIT BAKE BAKED BAKER BALE BALES BALL
-BALLS BAN BAND BANE BANG BANK BAR BARE BARK BARN BASE BASH BASIC BASS BATCH BATH BEAD BEAN BEAR BEARD BEAST
-BEAT BED BEE BEER BEG BELL BELLY BELT BEST BET BIAS BIDE BIG BILE BILL BIND BIT BITE BLACK BLADE BLAME
-BLAND BLANK BLAST BLAZE BLEAT BLEND BLESS BLIND BLINK BLOCK BLOOD BLOOM BLOT BLOW BLUE BLUR BOAR BOARD
-BOAST BOB BODE BOG BOLD BOLT BOND BONE BOON BOOST BOOT BORE BORN BOSS BOTH BOUND BOUT BOW BOX BOY BRAG
-BRAIN BRAKE BRAN BRAVE BREAD BREAK BREW BRIDE BRIEF BRIM BRING BROAD BROKE BROOK BROW BROWN BRUSH BUCK BUD
-BUG BUILD BUILT BULK BULL BUN BUNK BUNT BURN BURST BUS BUST BUTT BUZZ CAB CAGE CALF CALL CALM CAME CAN CANE
-CAP CAPE CAR CARE CARRY CART CASE CAST CAT CATCH CAVE CELL CHAIN CHAIR CHALK CHANT CHAP CHAR CHART CHASE CHAT
-CHEAP CHEAT CHEF CHESS CHEST CHEW CHIEF CHILD CHIN CHIP CHOSE CHUNK CITE CLAD CLAIM CLAM CLANG CLAP CLASH
-CLASS CLAY CLEAN CLEAR CLICK CLIFF CLING CLIP CLONE CLOSE CLOTH CLOUD CLOWN CLUB COD CODE COG COIL COIN COLD
-COME COMET COMIC CON CONE COOK COOL COPE CORD CORE CORN COST COUCH COUNT COUP COURT COVER COW CRAB CRACK
-CRAFT CRAM CRANE CRASH CREAM CREEK CREW CRIB CRISP CROP CROSS CROW CRUEL CRUSH CUB CUBE CUFF CULL CUP CURE
-CURL CUT CUTE DAB DAILY DAM DANCE DARE DARK DART DASH DATE DAUNT DEAL DEAN DEBT DECK DECOY DELAY DEN DEPOT
-DEPTH DEW DIAL DID DIG DIKE DIM DIP DIRE DIRT DIRTY DISH DISK DIVE DOCK DODGE DOE DOG DOLE DOLT DOME DONE
-DOOM DOOR DOPE DOSE DOT DOUBT DOVE DOWN DOZEN DRAFT DRAG DRAIN DRAMA DRAPE DRAW DRAWN DREAD DREAM DRESS DROOL
-DROP DROVE DROWN DRUM DUB DUEL DUG DUKE DULL DUNE DUNG DUST DWARF DWELL EAGLE EAR EARN EARTH EASE EAST EAT
-EDGE EDIT EEL EIGHT ELECT ELF ELITE ELK ELM EMIT EMPTY END ENJOY ENTER EQUAL ERA ERROR EVE EVEN EVENT EVIL
-EWE EXAM FABLE FAD FADE FAIL FALL FALSE FAN FANCY FAR FAT FATE FAX FEAST FEE FEEL FEET FELL FEND FERN FETCH
-FEVER FIG FIGHT FILE FILL FILM FIN FIND FINE FIR FIRE FIRM FISH FIST FIT FIVE FIX FIZZY FLAG FLAK FLAME
-FLASH FLAW FLEA FLEE FLEET FLESH FLEW FLIP FLOAT FLOCK FLOOD FLOOR FLOP FLOW FLUFF FOAM FOB FOE FOG FOLD
-FOND FONT FOOD FOOL FOOT FOR FORCE FORE FORGE FORK FORM FORT FOUL FOUND FRAME FRANK FRAY FREE FRESH FROTH
-FROWN FROZE FRY FUEL FULL FUN FUND FUR FUSE GAG GALE GALL GAME GAP GARB GAS GATE GAVE GAZE GEAR GEM GENE
-GIANT GIG GILL GIN GIRD GIRL GIRTH GIVE GIVEN GLAND GLARE GLASS GLEE GLIDE GLINT GLOAT GLOB GLOOM GLOSS
-GLOVE GLOW GLUE GNU GOAD GOAT GOD GOES GOLD GOLF GOOD GOOF GORE GOT GRAB GRACE GRAFT GRAIN GRAND GRANT GRAPE
-GRASP GRASS GRAVE GRAY GRAZE GREAT GREEN GREW GRID GRIEF GRIM GRIN GRIP GROAN GROG GROIN GROOM GROSS GROVE
-GROW GROWN GRUB GUARD GUIDE GULL GUM GUN GUT HAD HAG HAIL HALE HALF HALL HALT HAM HAND HANG HARD HARE HARM
-HAT HAVE HAVEN HAY HAZE HEAL HEAP HEAT HEAVY HELL HELP HEM HEN HER HERD HERE HERO HID HIDE HIGH HIKE HILL
-HIM HIP HIRE HIT HIVE HOLD HOLE HOLLY HOME HONEY HONOR HOOD HOOK HOOT HOP HOPE HORN HOT HOW HUB HUFF HUG
-HULL HUM HUMAN HUNG HUNK HUNT HURL HURRY HUSK HUT ICE ICY IDLE IMP INCH INGOT INK INN JAB JAG JIG JOG JOY
-JUDGE JUG JUICE JUICY JUMP JUT KEG KELP KEPT KEY KID KILL KIN KIND KING KISS KIT KITE KNEE KNIFE KNIT KNOB
-KNOT KNOWN LAB LACK LAD LAKE LAMP LANCE LARD LARK LASH LAST LATE LATER LAUD LAUGH LAWN LAY LEAD LEAF LEAN
-LEAP LEARN LEAVE LEDGE LEFT LEG LEMON LEND LESS LET LEVEL LID LIE LIFE LIFT LIGHT LIKE LIMB LIME LIMIT LIMP
-LINE LINK LIST LIVE LOAD LOB LOCAL LODGE LOFT LOG LONE LONG LOOM LOON LOOSE LORE LOSS LOST LOUD LOUT LOVE
-LOWER LUCK LULL LUNAR LURE LUST MACE MADE MAIL MAIN MALL MALT MANE MAP MARCH MARK MARRY MARSH MART MASK MASS
-MATCH MATE MAUL MAZE MEAL MEAN MEAT MEET MELD MELT MERCY MERE MERIT MESH MESS METAL MILD MILK MILL MIME MINT
-MIRE MIX MOAN MOAT MOB MODE MOLE MOLT MONEY MONTH MOOD MOON MOOR MOOT MORAL MORE MOSS MOST MOTH MOTTO MOUND
-MOURN MOUTH MOVE MOVED MOVIE MUD MUFF MUG MULL MUST MUTT NAB NAG NAIL NAME NAP NAVAL NAVE NEED NET NIGHT NIL
-NIP NIT NOBLE NOD NOOSE NORM NOSE NOTCH NOTE NUB NULL NUMB NUN OAK OAT OCEAN ODD ODE OIL OLD OLIVE ONCE ONE
-OPERA ORBIT ORDER ORE ORGAN OVEN OWE OWL OWN OZONE PACE PACK PACT PAIR PALE PALM PAN PANE PANEL PANG PANIC
-PAPER PARE PARK PARTY PASS PAST PASTA PASTE PAT PATCH PAUSE PAVE PAWN PEACE PEACH PEARL PEG PELT PEN PENNY
-PERCH PERK PEST PET PICK PIKE PILL PINE PIT PLACE PLAIN PLAN PLANE PLANT PLATE PLAY PLEA PLEAD PLOT PLOW PLUCK
-PLUG PLUMB PLUME PLUS PLUSH POD POKE POKER POLAR POLL POND POOL PORE POSE POST POT POUCH POUR POUT POWER PRESS
-PRICE PRIDE PRIME PRINT PRIOR PRIZE PROBE PROW PRUNE PUB PUFF PULL PULP PUMP PUN PUNCH PUP PURE PURSE PUSH PUT
-RACK RAFT RAGE RAIL RAIN RAKE RALLY RAM RANCH RANG RANGE RANT RAP RARE RASH RATE RAVE RAW RAY REACH REAL REALM
-REAP REBEL REED REEF REEL REIGN RELAY RELIC RENT RESET RESIN REVEL RID RIDE RIFF RIG RIGHT RILE RING RIP RISE
-RIVAL RIVET ROAD ROAM ROAR ROAST ROBE ROCK ROCKY RODE ROLE ROLL ROOF ROOK ROOM ROOST ROPE ROSE ROUGE ROUGH
-ROUND ROUSE ROVE ROAD ROYAL RUB RUDE RUFF RUIN RULE RUN RUST RUSTY RUT SAD SAFE SAIL SAKE SALT SAME SAND SANG
-SANK SAP SAVE SAVOR SAVVY SCALP SCAN SCARE SCAT SCENE SCONE SCOOP SCORE SCOUT SCRAM SCREW SCRUB SEAL SEAM SEAT
-SEE SEED SEEK SELF SELL SEND SET SHAME SHAPE SHARE SHARK SHARP SHAVE SHEAR SHED SHEET SHELF SHELL SHIFT SHIN
-SHINE SHIRT SHORE SHORT SHOUT SHOVE SHOWN SHRUB SHRUG SIGH SILK SILL SIN SIRE SITE SIZE SKATE SKID SKILL SKIN
-SKIT SKULL SLAB SLAG SLAM SLAP SLED SLEEK SLIM SLIP SLOE SLOP SLOT SLOW SLUG SLUMP SLUR SMACK SMALL SMART
-SMASH SMEAR SMELL SMILE SMOG SNAP SOAK SOAR SOCK SOFT SOIL SOLE SOLVE SOOT SORE SORT SOUL SOUR SOW SPAN SPAR
-SPARE SPARK SPECK SPELL SPEND SPEW SPICE SPILL SPIN SPIT SPOKE SPOOL SPORT SPOT SPOUT STACK STAFF STAIN STALK
-STAMP STAND STARK START STASH STATE STAVE STEAK STEAL STEAM STEEL STEEP STEER STEM STEP STERN STEW STICK STIFF
-STILL STING STINK STINT STIR STOCK STOMP STOP STORE STORY STOVE STOW STRAP STRAW STRAY STRIP STRUT STUCK STUD
-STUDY STUFF STYLE SUGAR SUIT SULK SUMP SUNNY SUPER SURGE SWAMP SWEAR SWEAT SWEEP SWEET SWELL SWIRL SWOON YACHT
-TAB TACK TAIL TALE TALL TAME TAN TAP TAR TASK TAUT TAWNY TEAM TEAR TELL TENSE TENT TEPID TERM TEST THICK THIGH
-THIN THING THINK THIRD THORN THREE THROW TIDE TIFF TIGER TILE TILL TILT TIME TIMID TIN TIRE TITLE TOAD TODAY
-TOIL TOKEN TOLD TOLL TOMB TONE TONIC TOOK TOOL TORE TORN TOSS TOTAL TOTE TOUGH TOUR TOWN TRACE TRACK TRAIL
-TRAIN TRAIT TRAMP TRAP TRAY TREAD TREAT TREE TREND TRIM TRIO TRIP TROLL TROOP TROUT TRUCE TRULY TRUMP TRUNK
-TUB TUCK TUN TUNE TWEAK TWIG TWIRL TYPE UGLY UNCLE UNDO UNFIT UNION UNIT UNITE UNITY UNTIL UPSET URGE VAGUE
-VALE VALOR VANE VAULT VENOM VENT VEST VIAL VICE VIEW VIGIL VILE VINE VIPER VIRAL VIRUS VISTA VIVID VOGUE VOTE
-VOW WAD WADE WAGE WAKE WALL WALTZ WANE WARD WARM WART WASH WASTE WATCH WEARY WEB WEIRD WELD WELL WENT WHALE
-WHEAT WHILE WHIM WHIP WHISK WHOLE WHOSE WIDE WILL WILT WINDY WINK WIPE WIRE WISH WISP WITCH WITTY WOE WOLF
-WOMB WON WONT WOOD WOOL WORD WORLD WORN WORSE WORST WRAP WRECK WREN WRING WRIT WRONG WROTE YAM YANK YARN
-YEARN YEAST YELL YIELD ZEAL ZERO ZINC ZONE ZOO ZOOM`.trim().split(/\s+/).map(w=>w.toUpperCase()).filter(w=>w.length>=2);
-const WORD_SET=new Set(WORDS_RAW);
+// Word set is populated asynchronously from a real Scrabble dictionary at page load.
+// WORD_BY_LEN[n] = Set of valid words of exactly length n (2–7), uppercase.
+// This bucketed structure means bestWord only iterates words of the exact lengths possible
+// from the current tile pool, instead of scanning all 170k+ words every time.
+let WORD_BY_LEN = {};   // { 2: Set, 3: Set, ... 7: Set }
+let WORD_SET    = new Set(); // flat set, populated from WORD_BY_LEN after load
+let dictReady   = false;
+
+// Candidate wordlist URLs — tried in order; first successful fetch wins.
+// All are raw.githubusercontent.com (CORS: *) serving plain text, one word per line.
+const DICT_URLS = [
+  // TWL06 — Official Tournament Word List (NA Scrabble standard), ~178k words
+  'https://raw.githubusercontent.com/redbo/scrabble/master/dictionary.txt',
+  // Collins Scrabble Words (international standard), ~270k words
+  'https://raw.githubusercontent.com/jesstess/Scrabble/master/sowpods.txt',
+  // ENABLE1 — public-domain list used widely in word games, ~172k words
+  'https://raw.githubusercontent.com/dolph/dictionary/master/enable1.txt',
+];
+
+async function loadDictionary() {
+  setDictStatus('loading');
+  for (const url of DICT_URLS) {
+    try {
+      const resp = await fetch(url, { cache: 'force-cache' });
+      if (!resp.ok) continue;
+      const text = await resp.text();
+      const lines = text.split(/\r?\n/);
+      WORD_BY_LEN = {};
+      let count = 0;
+      for (const raw of lines) {
+        const w = raw.trim().toUpperCase().replace(/[^A-Z]/g, '');
+        if (w.length < 2 || w.length > 7) continue;
+        if (!WORD_BY_LEN[w.length]) WORD_BY_LEN[w.length] = new Set();
+        WORD_BY_LEN[w.length].add(w);
+        count++;
+      }
+      WORD_SET = new Set(Object.values(WORD_BY_LEN).flatMap(s => [...s]));
+      dictReady = true;
+      setDictStatus('ready', count, url);
+      return;
+    } catch(e) {
+      console.warn('Dict fetch failed:', url, e);
+    }
+  }
+  // All fetches failed — fall back to built-in minimal list
+  console.warn('All dictionary fetches failed — using built-in fallback list');
+  loadFallbackDictionary();
+}
+
+function loadFallbackDictionary() {
+  const fallback = `AA AB ACE ADD ADE AID AIM AIR ALE ANT ANY APE ARC ARE ARK ARM ART ASH ATE AXE
+BAD BAG BAH BAN BAR BAS BAT BAY BED BET BIG BIT BOW BOX BOY BUD BUN BUR BUS BUT BUY
+CAB CAD CAN CAP CAR CAT CAW CEE COB COD COG COP COT COW COY CUB CUD CUP CUR CUT
+DAB DAD DAH DAM DAP DAW DAY DEB DEW DID DIG DIM DIN DIP DOC DOE DOG DOT DRY DUB DUG DUN DUO
+EAR EAT EEL EGO ELF ELK ELM EMU ERA EVE EWE
+FAD FAN FAR FAT FAX FAY FED FEW FIG FIN FIT FIX FLY FOB FOE FOG FOR FOX FRY FUB FUG FUN FUR
+GAB GAD GAG GAP GAR GAS GAY GEL GEM GET GIG GIN GNU GOA GOB GOD GOR GOT GUM GUN GUT GUY
+HAD HAJ HAM HAP HAS HAT HAW HAY HEM HEN HER HEW HID HIM HIP HIS HIT HOB HOD HOG HOP HOT HOW HUB HUE HUG HUH HUM
+ICE ICY ILL IMP INK INN ION
+JAB JAG JAM JAR JAW JAY JET JIG JOB JOG JOT JOY JUG JUT
+KEG KID KIN KIT
+LAB LAD LAG LAP LAW LAX LAY LEA LED LEG LET LID LIE LIT LOB LOG LOT LOW LUG
+MAB MAD MAN MAP MAR MAT MAW MAY MEN MET MOB MOD MOM MOP MOW MUD MUG
+NAB NAG NAP NAW NAY NEB NET NIB NIP NIT NOB NOD NOR NOT NOW NUB NUN NUT
+OAF OAK OAR OAT ODE OFT OHM OHO OIL OPE ORB ORE OUR OUT OWE OWL OWN
+PAD PAL PAN PAP PAR PAT PAW PAY PEA PED PEG PEN PEP PET PEW PIE PIG PIN PIP PIT PIU PIX PLY POD POM POP POT POW PRY PUB PUG PUN PUP PUS PUT
+RAG RAH RAN RAP RAT RAW RAY REB REC RED REF REM REP RIB RID RIG RIM RIP ROB ROD ROT ROW RUB RUG RUM RUN RUT RYE
+SAC SAD SAG SAP SAT SAW SAY SEA SET SEW SHE SKI SKY SLY SOB SOD SOT SOW SOY SPA SPY STY SUB SUE SUM SUN SUP
+TAB TAD TAN TAP TAR TAT TAV TAW TAX TEA TEN THE TIE TIN TIP TOE TON TOO TOP TOR TOT TOW TOY TUB TUG TUN TWO
+UDO UGH UMP URN USE
+VAC VAN VAR VAS VAT VAV VAW VEE VET VIA VIE VOW
+WAD WAG WAP WAR WAS WAW WAX WAY WEB WED WEE WEN WIG WIN WIS WIT WOE WOG WOK WON WOO WOP
+YAM YAP YAW YEA YEH YEP YET YEW YID YIN YIP YOU
+ZAG ZAP ZEA ZED ZEE ZEN ZIT ZOO
+ABLE ACED ACES ACHE ACID ACME ACNE ACRE ACTS ADDS AFAR AGED AGES AILS AIMS AIRS AIRY AKIN ALBA ALOE ALSO ALTO
+AMOK AMYL ANAL ANDS ANEW ANON ANTE ANTI ANTS APEX ARCH AREA ARIA ARID ARMY ARTS ASHY ATOM ATOP AVID AWOL AWED AXES AXLE
+BABY BACK BADE BALE BALL BAND BANE BANG BANK BARE BARK BARN BASE BASH BASS BASK BATH BAWL BEAD BEAM BEAN BEAR BEAT BECK BEEF BEEN BEER BEES BEET BELL BELT BEST BIAS BIDE BILE BILL BIND BIRD BITE BLOT BLOW BLUE BLUR BOAR BOAT BOLD BOLT BOND BONE BOOK BOOM BOON BOOT BORE BORN BOSS BOTH BOUT BOWL BRED BREW BRIM BROW BULK BULL BUMP BUNK BUNT BUOY BURN BURP BURR BURY BUST BUSY BUZZ
+CAFE CAGE CAKE CALF CALL CALM CAME CANE CAPE CARD CARE CARP CART CASE CASH CAST CEDE CHAP CHAR CHEF CHIN CHIP CHOP CHOW CLAD CLAM CLAN CLAP CLAW CLAY CLEW CLIP CLOD CLOP CLOT CLUB CLUE COAL COAT COAX COIL COIN COLA COLD COLT COME CONE COOK COOL COPE CORE CORK CORN COST COZY CRAM CREW CROP CROW CRUD CRUX CUBE CUFF CULT CURE CURL DAB DARE DARK DART DASH DATO DAZE DEAD DEAF DEAL DEAN DEER DEFT DEMO DENT DENY DESK DIKE DILL DIME DINE DINT DIRE DISK DOTE DOUR DOVE DOWN DRAB DRAG DRAW DREW DRIP DROP DRUM DUAL DULL DUMP DUNK DUPE DUSK DUST DUTY EACH EARL EARN EASE EDIT EMIT ENVY EPIC EVEN EVER EXAM EXIT FACE FACT FADE FAIL FAIR FAKE FALL FAME FANG FARE FARM FAZE FEAR FEAT FEED FEEL FELL FERN FETE FEUD FIEF FILE FILL FILM FIND FINE FIRE FIRM FISH FIST FIVE FIZZ FLAG FLAK FLAP FLAW FLEA FLED FLEW FLIP FLOP FLOW FOAM FOIL FOLD FOND FONT FOOD FOOL FOOT FORE FORK FORM FORT FOUL FRAY FREE FROG FUME FURL FUSE FUZZ GALE GALL GAME GAPE GARB GATE GAVE GAZE GEAR GERM GILL GIRD GIRL GIVE GLAD GLEE GLOB GLOOM GLOP GLOW GLUE GOAD GOAT GOLD GOLF GOOF GORE GRAB GRAY GREW GRIM GRIN GRIP GRIT GRUB GULL GULP
+HACK HAIL HALE HALF HALL HALT HAND HARE HARM HARP HASH HAVE HAWK HAZE HEAL HEAP HEAT HEEL HELD HELM HELP HERD HERE HERO HIDE HIGH HIKE HILL HILT HINT HIRE HIVE HOLD HOLE HOLY HOME HOOD HOOK HOOP HOOT HOPE HORN HOWL HUGE HULK HULL HUMP HUNG HUNK HUNT HURL HURT HUSK HYMN
+ICED IDEA IDLE INCH IRIS ISLE ITCH
+JADE JAIL JAPE JEER JELL JERK JEST JIBE JILT JIVE JOLT JOWL JULY JUMP JUST KEEN KELP KEPT KICK KILL KIND KING KNIT KNOB KNOT LACK LAID LAKE LAMB LAMP LAND LANE LARD LARK LASH LAST LATE LAUD LAWN LEAD LEAF LEAN LEAP LEER LEND LENS LESS LEST LEVY LICK LIED LIEN LIFE LIFT LIKE LIME LIST LIVE LOAD LOCK LODE LOFT LONE LONG LOOK LOOM LOON LORE LORN LOSS LOUD LOUT LOVE LULL
+MACE MADE MAIL MAIN MALL MALT MANE MINK MIRE MIST MOAT MOCK MOLD MOLE MOLT MOPE MOOT MORN MOSS MOTH MUCH MUFF MULE MUSE MUSK MUTT
+NAIL NAME NARC NAVE NAVY NEAT NECK NEED NEST NICK NIGH NODE NONE NOON NOOK NORM NOSE NUDE NULL NUMB
+OBOE ODDS OMEN ONCE OOZE ORBS ORES OVEN OVAL OVER
+PACE PACK PACT PAID PAIR PALE PALM PANG PANIC PARE PARK PASS PAST PAVE PAWN PEAL PEAR PEER PEEL PELT PEST PIER PILE PINE PING PITY PLAN PLAY PLEA PLOT PLOW PLUG PLUM PLOP PLUS POEM POKE POLE POLL POLO POND POOL PORE POSE POST POUR POUT PREY PRIG PROD PROW PUFF PULL PUMP PUNK PURE PURR PUSH
+QUIZ RACK RAFT RAGE RAIL RAIN RAKE RAMP RANG RANT RASP RAVE REAL REAP REEL RELY REND RENT RUSE RUST RUIN RILE RIND RING RIOT RISE RISK RITE ROAM ROAR ROAST RODE ROGUE ROLE ROLL ROOF ROOK ROOM ROPE ROSE ROUE ROUT ROVE RUBY RUFF RUIN RULE RUSE RUSH
+SAFE SAGA SAGE SAIL SAKE SALT SAME SANE SANG SANK SASH SAVE SCAN SCAR SCUD SEAL SEAM SEAT SEEM SHIN SHIP SHOE SHOT SHOW SHRUB SILL SILO SILK SILT SING SIRE SITE SKIM SKIN SKIP SKIT SLAB SLAG SLAM SLAP SLAT SLAY SLID SLIM SLIP SLOP SLUR SMUG SNAP SOAK SOAR SOCK SOFT SOIL SOLE SOME SONG SORE SORT SOUL SOUR SPEC SPIN SPIT SPOT SPUN STUB STUD STUN SUCH SUIT SULK SUNG SUNK SURF SWAM
+TACK TAIL TALE TALL TAME TAMP TANG TASK TAUT TEAM TEAR TEEM TELL TEND TENT TERM THAN THEM THEN THEY THIN TICK TIDE TIFF TILL TILT TIME TIRE TILE TOAD TOLL TOMB TOME TONE TONG TONE TORC TORE TORN TOSS TOTE TOUR TOIL TROD TROT TROVE TROY TUCK TUFT TUNE TUSK TUTU TWIT
+UNDO UNIT UPON USED VAIN VALE VANE VEER VEIN VERY VEST VETO VIAL VIBE VICE VIEW VILE VINE VOLT VOID VOLE VOTE
+WADE WAGE WAKE WALL WANE WARD WARE WARY WASH WATT WEAL WEAN WEEP WELD WELT WENT WHET WHIM WHIP WICK WIFE WILD WILE WILL WILT WINK WISP WOAD WOKE WOKE WOLF WOMB WONT WOOL WORD WORM WORN WRAP WRIT
+YELL YOGA YOKE YORE YOUR YOWL
+ZEAL ZERO ZINC ZONE ZOOM
+ADEPT AFOOT AFTER AGLOW AHOLD AILED AIMED AIRED AISLE ALOFT AMONG AMPLE ANGEL ANGER ANKLE ANNEX ANTIC ANVIL APPLY APRON APTLY ARDOR ARISE ARSON ARTSY ATLAS ATTIC ATONE AVERT AVID AVOID AWARD AWFUL
+BACON BADLY BAIZE BALMY BANJO BASIC BASIL BATCH BEADY BEARD BEAST BEIGE BELLE BELOW BENCH BIRCH BISON BLAND BLAST BLAZE BLEAT BLEED BLESS BLIMP BLIND BLINK BLISS BLITZ BLOOD BLOOM BLOWN BLUNT BOAST BOGGY BOSSY BOTCH BRAID BRAIN BRAVE BRAWN BRAZE BREAD BREAK BREAM BREED BREVE BRIDE BRINE BRINE BRINK BRISK BROOD BROOK BROTH BROWN BRUNT BRUSQUE BUDGE BULGE BUNCH BUSHY
+CABAL CABIN CAMEL CANDY CARGO CAROL CEDAR CHEAP CHEAT CHEEK CHEER CHESS CHEST CHIDE CHIME CHIVE CHOIR CHUCK CHUNK CHURL CHURN CIVIC CIVIL CLAIM CLANK CLASH CLASP CLASS CLEAN CLEAR CLEAT CLERK CLICK CLINK CLOCK CLOSE CLOTH CLOUD CLUMP COACH COMET COMIC COUCH COULD COURT COVER COWER CRAFT CRANE CRASH CREAK CREAM CREED CREEK CRIME CRIMP CRISP CRONE CROOK CROSS CROUP CROWN CRUEL CRUMB CRUSH CRYPT CURVE CUTBACK
+DAILY DAISY DANCE DATUM DECOR DECRY DELVE DEPOT DEPTH DERBY DIRTY DIVVY DIZZY DODGE DOING DOLLY DOMED DONOR DOTTY DOUBT DOUGH DOWDY DOWEL DRAFT DRAIN DRAKE DRAPE DRAWL DREAD DREAM DRESS DRIED DRINK DRIVE DRONE DROOL DROOP DROSS DROVE DROWN DYING
+EAGLE EARLY EARTH EIGHT ELDER ELITE EMPTY ENDED ENROL ENTER ENVOY EQUAL EVERY EXACT EXERT
+FABLE FACET FAMED FANCY FATTY FERAL FERRY FEVER FIBER FICKLE FIEND FIFTH FIFTY FIGHT FINAL FJORD FLAIR FLASK FATAL FLAKE FLARE FLECK FLESH FLINT FLOCK FLOOD FLOOR FLOSS FLOUT FLOWN FRAIL FRAME FRANK FRAUD FRAY FREAK FREED FRESH FROTH FROWN FROZE FROST FRUGAL FRUIT FUNKY
+GAUDY GAUZE GAVEL GAUZY GENRE GLARE GLASS GLINT GLOAT GLOBE GLOOM GLOSS GLOVE GLUED GNASH GOUGE GRACE GRADE GRAFT GRAIN GRAND GRANT GRAPE GRASP GRAVE GRAZE GREAT GREEN GREET GRIEF GRILL GRIPE GROAN GROIN GROOM GROPE GROUT GROVE GROWL GRUEL GRUNT GUILE GUISE GUSTO GYPSY
+HATCH HAZEL HEADY HEART HEAVY HEDGE HEIST HENCE HERON HILLY HINGE HIPPO HOARD HOLLY HOMER HONEY HONOR HORNY HORSE HOTEL HOUND HUNCH HUNKY HUSSY
+ICIER ICING IDEAL IMAGE IMPLY INEPT INFER INNER INTER INTRO IRONY IVORY
+JAUNT JELLY JERKY JETTY JEWEL JIFFY JOLLY JOUST JUDGY JUICY JUMBO JUROR KNACK KNIFE KNOCK KNOLL KNOWN
+LABEL LANCE LANKY LAPEL LARGE LASER LATCH LATER LEMON LEVEL LINGO LIVER LLAMA LOATH LOCAL LODGE LOFTY LOCAL LOUSY LUCKY LUNCH LUSTY LYRIC
+MAGIC MAGNIFY MAMBO MANGA MANIA MANIC MANOR MAPLE MARCH MARSH MATCH MATTE MAUVE MAYOR MEALY MEDAL MELEE MERCY MERGE MERIT MERRY METAL MINOR MINUS MIRTH MISER MIMIC MOLAR MOLDY MONEY MONTH MORAL MOSSY MOURN MOTEL MUDDY MUSTY NABOB NADIR NASTY NAVAL NEEDY NERVY NIFTY NINNY NITTY NOBLE NOISY NONCE NYLON
+OAKEN OCCUR OCEAN OLIVE ONSET OPERA ORBIT ORDER ORGAN OUTER OVOID OZONE
+PADDY PATSY PEACE PEACH PEAKY PENAL PENNY PERCH PESKY PHASE PIANO PICKY PILOT PINCH PIXIE PLAIN PLANK PLANT PLATE PLIED PLUCK PLUME PLUSH POKER POLAR POPPY PORCH PRANK PRESS PRICE PRIDE PRIME PRINT PRIOR PRIZE PROBE PRUDE PRUNE PUDGY PUFFY PULPY PUNCH PUPPY PURGE PUSHY PUTTY PYGMY
+QUAFF QUALM QUASH QUELL QUERY QUEUE QUIRK QUOTA QUOTE
+RABBI RADAR RAFT RAINY RALLY RANCH RANGE RAPID RASPY RATIO REACH REALM REBEL REEF REIGN RELAY RELIC REPAY RESIN REVEL RIDER RIDGE RISKY RIVAL RIVET ROAST ROBIN ROCKY RODEO ROUGE ROUGH ROUND ROUSE ROYAL RUGBY RUSTY
+SABLE SADLY SAINT SANDY SAUCE SAUNA SAVVY SCALP SCALP SCALD SCALE SCAMP SCENE SCONE SCOOP SCORE SCOUT SCRAM SCRAWL SCREW SCRUB SEEDY SHAME SHAPE SHARE SHARK SHARP SHAVE SHEAR SHEEN SHEEP SHEER SHEET SHELF SHELL SHIFT SHINE SHIRT SHORE SHORT SHOUT SHOVE SHOWN SHRUB SHRUG SIGHT SILLY SINCE SIXTH SIXTY SIXTY SKATE SKIFF SKILL SKIRT SKULL SKUNK SLANT SLICK SLIDE SMELL SMILE SMITE SMOCK SMOLT SMUDGE SNACK SNAIL SNAKY SNARL SNEAK SNIDE SNIFF SNORE SNORT SNOUT SNUCK SOGGY SORRY SPARK SPASM SPAWN SPEAR SPECK SPEED SPELL SPEND SPICE SPILL SPINE SPITE SPOUT SPRAY SPREE SQUAD SQUAT SQUAB STACK STAGE STAIN STAIR STALK STAMP STANK STARE STARK START STASH STAVE STEAK STEAL STEED STEEL STEEP STEER STERN STIFF STILL STING STINK STINT STOMP STONE STOUT STOVE STRAP STRAW STRAY STRIP STRUT STUDY STUFF STYLE SUAVE SURLY SWAMP SWATH SWEAR SWEAT SWEEP SWEET SWELL SWEPT SWIRL SWOON SYRUP
+TABLE TACKY TAPIR TARDY TAUNT TAWNY TEACH TENSE TEPID THEME THICK THIGH THONG THORN THREW THREE THROW THUMP TIGER TIMID TITHE TITLE TIZZY TOADSTOOL TOADY TOPAZ TOTAL TOTEM TOUGH TOXIC TRACE TRACK TRAIL TRAIN TRAIT TRAMP TRAPS TRAWL TREAD TREAT TREND TRUSS TROUT TRUCE TRULY TRUMP TRUNK TRYST TULIP TUMOR TUNER TIPSY TWANG TWEAK TWERP TWIRL TWIST TYING ULTRA UNFIT UNION UNITE UNTIL UPSET UTTER
+VAGUE VALID VALOR VALVE VAPOR VAULT VAUNT VEGAN VENOM VERGE VIGIL VIRAL VIRUS VISTA VIVID VIXEN VOCAL VODKA
+WADDLE WAGER WALTZ WOOZY WEARY WIRED WITCH WITTY WRECK WRATH WRING WRONG WROTE YACHT YODEL YEARN YEAST YIELD ZESTY ZILCH`.trim().split(/\s+/).map(w=>w.toUpperCase()).filter(w=>w.length>=2 && w.length<=7);
+  WORD_BY_LEN = {};
+  for (const w of fallback) {
+    if (!WORD_BY_LEN[w.length]) WORD_BY_LEN[w.length] = new Set();
+    WORD_BY_LEN[w.length].add(w);
+  }
+  WORD_SET = new Set(fallback);
+  dictReady = true;
+  setDictStatus('fallback', fallback.length);
+}
+
+function setDictStatus(state, count, url) {
+  const el = document.getElementById('dict-status');
+  if (!el) return;
+  if (state === 'loading') {
+    el.textContent = '📖 Loading dictionary…';
+    el.style.color = 'rgba(255,255,255,.4)';
+    el.style.display = 'block';
+  } else if (state === 'ready') {
+    const src = url ? url.includes('redbo') ? 'TWL06' : url.includes('jesstess') ? 'SOWPODS' : 'ENABLE1' : '';
+    el.textContent = `✅ ${count.toLocaleString()} words loaded (${src})`;
+    el.style.color = 'rgba(100,220,100,.7)';
+    setTimeout(() => { el.style.opacity='0'; el.style.transition='opacity 2s'; }, 4000);
+  } else if (state === 'fallback') {
+    el.textContent = `⚠️ Using built-in word list (${count} words) — offline?`;
+    el.style.color = '#f5a623';
+  }
+}
+
+// Kick off dictionary load immediately on script parse
+loadDictionary();
 
 // =================== DECK ===================
 function buildDeck(){
@@ -716,36 +824,41 @@ function shuffle(a){
 
 // =================== WORD FINDER ===================
 // Core: find best word scorable from an arbitrary tile pool
+// Uses WORD_BY_LEN buckets — only checks words of lengths achievable with this tile pool
 function bestWord(tiles){
   let best=null, bestScore=-1;
   const numBlanks=tiles.filter(t=>t.l==='_').length;
-  const maxLen=Math.min(tiles.length,7);
+  const maxLen=Math.min(tiles.length, 7);
   const freq={};
   for(const t of tiles) if(t.l!=='_') freq[t.l]=(freq[t.l]||0)+1;
-  for(const word of WORD_SET){
-    if(word.length<2||word.length>maxLen) continue;
-    const needed={};
-    for(const ch of word) needed[ch]=(needed[ch]||0)+1;
-    let blanksNeeded=0, possible=true;
-    for(const [ch,count] of Object.entries(needed)){
-      const have=freq[ch]||0;
-      if(have<count){blanksNeeded+=count-have; if(blanksNeeded>numBlanks){possible=false;break;}}
-    }
-    if(!possible) continue;
-    let score=0;
-    const used={...freq};
-    const wordTiles=[];
-    for(const ch of word){
-      if((used[ch]||0)>0){
-        const tile=tiles.find(t=>t.l===ch&&!wordTiles.includes(t));
-        score+=tile?tile.p:LETTER_PTS[ch]||0;
-        wordTiles.push(tile||{l:ch,p:LETTER_PTS[ch]||0});
-        used[ch]--;
-      } else {
-        wordTiles.push({l:ch,p:0});
+
+  for(let len=2; len<=maxLen; len++){
+    const bucket = WORD_BY_LEN[len];
+    if(!bucket) continue;
+    for(const word of bucket){
+      const needed={};
+      for(const ch of word) needed[ch]=(needed[ch]||0)+1;
+      let blanksNeeded=0, possible=true;
+      for(const [ch,count] of Object.entries(needed)){
+        const have=freq[ch]||0;
+        if(have<count){blanksNeeded+=count-have; if(blanksNeeded>numBlanks){possible=false;break;}}
       }
+      if(!possible) continue;
+      let score=0;
+      const used={...freq};
+      const wordTiles=[];
+      for(const ch of word){
+        if((used[ch]||0)>0){
+          const tile=tiles.find(t=>t.l===ch&&!wordTiles.includes(t));
+          score+=tile?tile.p:LETTER_PTS[ch]||0;
+          wordTiles.push(tile||{l:ch,p:LETTER_PTS[ch]||0});
+          used[ch]--;
+        } else {
+          wordTiles.push({l:ch,p:0});
+        }
+      }
+      if(score>bestScore){bestScore=score; best={word,tiles:wordTiles,score};}
     }
-    if(score>bestScore){bestScore=score; best={word,tiles:wordTiles,score};}
   }
   return best;
 }
@@ -830,6 +943,7 @@ function toggleVsAI(on) {
 }
 
 function createGame() {
+  if (!dictReady) { toast('Dictionary still loading — please wait a moment', 'info'); return; }
   const name = document.getElementById('create-name').value.trim();
   if (!name) { toast('Enter your name', 'error'); return; }
   myName = name;
@@ -913,6 +1027,7 @@ function _createGame() {
 
 // ---- JOIN GAME ----
 function joinGame() {
+  if (!dictReady) { toast('Dictionary still loading — please wait a moment', 'info'); return; }
   const name = document.getElementById('join-name').value.trim();
   const code = document.getElementById('join-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
   if (!name) { toast('Enter your name', 'error'); return; }
@@ -2200,8 +2315,79 @@ function renderOvalSeats(){
   const myIdx = mySeatIndex >= 0 ? mySeatIndex : 0;
   const rx = 0.46, ry = 0.46;
   const cx = 0.5, cy = 0.5;
-  // Inner felt radius for dealer button (on table surface, not at seat edge)
   const drx = 0.28, dry = 0.28;
+
+  // ── Spotlight beam ──
+  // One persistent element, re-styled each render so no flicker on token rebuild
+  let spotlight = arena.querySelector('.action-spotlight');
+  if (!spotlight) {
+    spotlight = document.createElement('div');
+    spotlight.className = 'action-spotlight';
+    arena.appendChild(spotlight);
+  }
+
+  const activeSeat = gs.seats[gs.activeSeat];
+  const showBeam = gs.phase === 'playing' && activeSeat && !activeSeat.folded;
+
+  // Also update the poker table's radial glow to tilt toward active player
+  const tableEl = document.querySelector('.poker-table');
+  if (tableEl) {
+    if (showBeam) {
+      const angleRad2 = seatAngle(gs.activeSeat, myIdx, n);
+      // Shift the gradient center 15% toward the active seat
+      const gx = 50 + 15 * Math.sin(angleRad2);
+      const gy = 50 - 15 * Math.cos(angleRad2);
+      tableEl.style.background = `radial-gradient(ellipse at ${gx.toFixed(0)}% ${gy.toFixed(0)}%, var(--felt-light) 0%, var(--felt) 50%, var(--felt-dark) 100%)`;
+    } else {
+      tableEl.style.background = '';
+    }
+  }
+
+  if (showBeam) {
+    // Angle of the active player in degrees, measured clockwise from top (CSS convention)
+    const beamAngleRad = seatAngle(gs.activeSeat, myIdx, n);
+    // Convert to degrees from top, clockwise — CSS conic-gradient starts at top (12 o'clock)
+    // sin gives x-component, -cos gives y-component (top = 0°, right = 90°)
+    const beamDeg = (beamAngleRad * 180 / Math.PI + 360) % 360;
+
+    // Beam half-width in degrees: wider for 2 players, narrower for 6+
+    const halfSpread = Math.max(12, 28 - n * 2);
+
+    // The beam is a narrow golden wedge from center outward.
+    // We build a conic-gradient: transparent everywhere except the beam slice.
+    // Gradient origin is at exact center of the arena (50% 50%).
+    // We rotate so the beam points at beamDeg.
+    const from = (beamDeg - halfSpread + 360) % 360;
+    const to   = (beamDeg + halfSpread + 360) % 360;
+
+    // Color: warm gold at center, fading to transparent at edges
+    // conic-gradient angles are measured clockwise from top (same as CSS)
+    const gradient = `conic-gradient(from ${from}deg at 50% 50%, ` +
+      `transparent 0deg, ` +
+      `rgba(255,210,80,0) 0deg, ` +
+      `rgba(255,220,100,0.13) ${halfSpread * 0.3}deg, ` +
+      `rgba(255,230,120,0.22) ${halfSpread * 0.7}deg, ` +
+      `rgba(255,235,130,0.28) ${halfSpread}deg, ` +   // peak at center of beam
+      `rgba(255,230,120,0.22) ${halfSpread * 1.3}deg, ` +
+      `rgba(255,210,80,0.08) ${halfSpread * 1.8}deg, ` +
+      `rgba(255,200,60,0) ${halfSpread * 2}deg, ` +
+      `transparent ${halfSpread * 2}deg` +
+      `)';`;
+    // Note: conic-gradient from X deg means the start of the pattern rotates X deg clockwise
+    // We want center of beam at beamDeg, so pattern start = beamDeg - halfSpread
+    spotlight.style.background = `conic-gradient(from ${from}deg at 50% 50%, transparent 0deg, rgba(255,210,80,0) 0deg, rgba(255,220,100,0.11) ${halfSpread*0.35}deg, rgba(255,230,120,0.24) ${halfSpread*0.8}deg, rgba(255,235,135,0.32) ${halfSpread}deg, rgba(255,230,120,0.24) ${halfSpread*1.2}deg, rgba(255,210,80,0.09) ${halfSpread*1.65}deg, transparent ${halfSpread*2}deg, transparent 360deg)`;
+
+    // Radial mask: fade from the center outward so it looks like a beam, not a pizza slice
+    // The mask makes it invisible near the very center and at the outer rim beyond the seats
+    spotlight.style.maskImage =
+      'radial-gradient(ellipse 82% 82% at 50% 50%, transparent 12%, black 30%, black 80%, transparent 96%)';
+    spotlight.style.webkitMaskImage = spotlight.style.maskImage;
+
+    spotlight.classList.add('visible');
+  } else {
+    spotlight.classList.remove('visible');
+    spotlight.style.background = 'none';
+  }
 
   gs.seats.forEach((seat, i) => {
     const angleRad = seatAngle(i, myIdx, n);
@@ -2448,7 +2634,35 @@ function showGameOver(reason, standings){
   document.getElementById('gameover-overlay').classList.add('show');
 }
 
-// =================== MODAL / SCREEN HELPERS ===================
+// =================== WORD CHECKER ===================
+function toggleWordChecker(){
+  const panel = document.getElementById('word-checker-panel');
+  const input = document.getElementById('word-check-input');
+  const isHidden = panel.style.display === 'none';
+  panel.style.display = isHidden ? 'block' : 'none';
+  if(isHidden){
+    input.value = '';
+    document.getElementById('word-check-result').textContent = '';
+    document.getElementById('word-check-result').style.color = '';
+    setTimeout(() => input.focus(), 50);
+  }
+}
+
+function checkWordLive(raw){
+  const word = raw.toUpperCase().replace(/[^A-Z]/g,'');
+  const el = document.getElementById('word-check-result');
+  if(!word){ el.textContent=''; el.style.color=''; return; }
+  if(!dictReady){ el.textContent='Loading…'; el.style.color='rgba(255,255,255,.4)'; return; }
+  if(WORD_SET.has(word)){
+    el.textContent = '✓ Valid';
+    el.style.color = '#6dde6d';
+  } else {
+    el.textContent = '✗ Invalid';
+    el.style.color = '#e06060';
+  }
+}
+
+
 function showScreen(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
