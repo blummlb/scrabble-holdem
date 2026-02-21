@@ -523,20 +523,22 @@ h1,h2,h3{font-family:'Playfair Display',serif;}
 <!-- INVITE MODAL -->
 <div class="modal-overlay" id="modal-invite">
   <div class="modal-box" style="max-width:440px;">
-    <h3 style="text-align:center;margin-bottom:4px;">Invite a Player</h3>
-    <p style="color:rgba(255,255,255,.4);font-size:.78rem;text-align:center;margin-bottom:4px;">Game code</p>
-    <div class="invite-code-big" id="invite-code-big">—</div>
-    <p style="color:rgba(255,255,255,.45);font-size:.84rem;text-align:center;margin:10px 0 14px;line-height:1.6;">
-      Send the link below — recipient taps it and lands<br>directly on the Join screen with the code pre-filled.
-    </p>
-    <div style="display:flex;gap:8px;margin-bottom:10px;">
-      <input id="invite-link-input" readonly
-        style="flex:1;background:rgba(0,0,0,.35);border:1px solid rgba(212,168,67,.35);border-radius:6px;
-               padding:9px 11px;color:var(--gold);font-family:monospace;font-size:.72rem;outline:none;min-width:0;">
-      <button class="btn btn-outline" style="padding:8px 14px;white-space:nowrap;" onclick="copyInviteLink()">Copy</button>
+    <h3 style="text-align:center;margin-bottom:12px;">Invite a Player</h3>
+    <div style="background:rgba(0,0,0,.4);border:1px solid rgba(212,168,67,.3);border-radius:10px;padding:14px;margin-bottom:12px;">
+      <div style="font-size:.7rem;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:4px;">Game Code</div>
+      <div class="invite-code-big" id="invite-code-big" style="margin:0;font-size:2.2rem;">—</div>
+    </div>
+    <div style="background:rgba(0,0,0,.4);border:1px solid rgba(212,168,67,.3);border-radius:10px;padding:14px;margin-bottom:12px;">
+      <div style="font-size:.7rem;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:6px;">Invite Link — tap to select, then copy</div>
+      <div id="invite-link-display"
+        onclick="selectInviteLink()"
+        style="color:var(--gold);font-family:monospace;font-size:.72rem;word-break:break-all;cursor:text;line-height:1.5;user-select:all;-webkit-user-select:all;">
+        —
+      </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;">
-      <button class="btn btn-gold btn-full" onclick="shareInvite()">📲 Share / Open Messages</button>
+      <button class="btn btn-gold btn-full" id="btn-copy-invite" onclick="copyInviteLink()">📋 Copy Invite Message</button>
+      <button class="btn btn-gold btn-full" onclick="shareInvite()" id="btn-share-invite">📲 Share / Open Messages</button>
       <button class="btn btn-outline btn-full" onclick="closeModal('modal-invite')">Done</button>
     </div>
   </div>
@@ -889,31 +891,70 @@ function _inviteGameType() {
   return ({'2card':"Two-Card Hold'em",'5card':"Five-Card Hold'em",'5cardsplit':'Five-Card Split Pot'})[settings.gameType] || "Scrabble Hold'em";
 }
 
+function _inviteMsg() {
+  return `Join my Scrabble Hold'em game (${_inviteGameType()})!\n\nCode: ${gameCode}\nLink: ${_inviteLink()}`;
+}
+
 function sendInviteSMS() {
   if (!gameCode) { toast('No active game code', 'error'); return; }
+  // Populate modal fields directly — no DOM reading later
   document.getElementById('invite-code-big').textContent = gameCode;
-  document.getElementById('invite-link-input').value = _inviteLink();
+  document.getElementById('invite-link-display').textContent = _inviteLink();
+  // Hide share button if Web Share API not available
+  const shareBtn = document.getElementById('btn-share-invite');
+  if (shareBtn) shareBtn.style.display = navigator.share ? '' : 'none';
   showModal('modal-invite');
 }
 
+function selectInviteLink() {
+  // Select all text in the link display div so user can manually copy
+  const el = document.getElementById('invite-link-display');
+  if (!el) return;
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
 function copyInviteLink() {
-  const link = _inviteLink();
-  const msg = `Join my Scrabble Hold'em game (${_inviteGameType()})!\n\nCode: ${gameCode}\nLink: ${link}`;
-  navigator.clipboard.writeText(msg)
-    .then(() => { toast('Invite copied! Paste it into any message app.', 'success'); closeModal('modal-invite'); })
-    .catch(() => {
-      const el = document.getElementById('invite-link-input');
-      if (el) { el.select(); document.execCommand('copy'); }
-      toast('Link copied!', 'success');
-    });
+  const msg = _inviteMsg();
+  const btn = document.getElementById('btn-copy-invite');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(msg)
+      .then(() => {
+        if (btn) { btn.textContent = '✓ Copied!'; setTimeout(() => { btn.textContent = '📋 Copy Invite Message'; }, 2000); }
+        toast('Invite message copied — paste into any app!', 'success');
+      })
+      .catch(() => fallbackCopy(msg));
+  } else {
+    fallbackCopy(msg);
+  }
+}
+
+function fallbackCopy(text) {
+  // Create a temporary textarea, select it, copy
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try {
+    document.execCommand('copy');
+    toast('Invite copied!', 'success');
+  } catch(e) {
+    toast('Could not auto-copy — tap the link above and copy it manually.', 'info');
+  }
+  document.body.removeChild(ta);
 }
 
 function shareInvite() {
-  const link = _inviteLink();
-  const msg  = `Join my Scrabble Hold'em game (${_inviteGameType()})!\n\nCode: ${gameCode}\nLink: ${link}`;
   if (navigator.share) {
-    navigator.share({ title: "Join my Scrabble Hold'em game!", text: msg, url: link })
-      .catch(e => { if (e.name !== 'AbortError') copyInviteLink(); });
+    navigator.share({
+      title: "Join my Scrabble Hold'em game!",
+      text:  _inviteMsg(),
+      url:   _inviteLink(),
+    }).catch(e => { if (e.name !== 'AbortError') copyInviteLink(); });
   } else {
     copyInviteLink();
   }
