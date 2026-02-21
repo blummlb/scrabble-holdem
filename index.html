@@ -333,6 +333,18 @@ h1,h2,h3{font-family:'Playfair Display',serif;}
     </div>
     <div class="form-row">
       <div class="form-group">
+        <label>Showdown Display (sec)</label>
+        <select id="create-showdown-secs">
+          <option value="5">5 seconds</option>
+          <option value="7" selected>7 seconds</option>
+          <option value="10">10 seconds</option>
+          <option value="15">15 seconds</option>
+        </select>
+      </div>
+      <div class="form-group"><!-- spacer --></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
         <label>Small Blind</label>
         <select id="create-blind">
           <option value="5">5 / 10</option>
@@ -516,8 +528,11 @@ h1,h2,h3{font-family:'Playfair Display',serif;}
     <h3>Table Options</h3>
     <div style="display:flex;flex-direction:column;gap:10px;">
       <button class="btn btn-outline btn-full" id="btn-sit-out-toggle" onclick="toggleSitOut()">Sit Out Next Hand</button>
-      <button class="btn btn-outline btn-full" onclick="standUpFromGame()">Stand Up (Keep Observing)</button>
-      <button class="btn btn-danger btn-full" onclick="leaveFromGame()">Leave Game</button>
+      <button class="btn btn-outline btn-full" onclick="standUpFromGame()">Stand Up After This Hand</button>
+      <button class="btn btn-danger btn-full" onclick="leaveFromGame()">Leave After This Hand</button>
+      <div id="host-endgame-wrap" style="display:none;border-top:1px solid rgba(255,255,255,.1);padding-top:8px;">
+        <button class="btn btn-danger btn-full" onclick="forceEndGame()">⛔ End Game Now</button>
+      </div>
       <button class="btn btn-outline btn-full" onclick="closeModal('modal-ingame-menu')">Cancel</button>
     </div>
   </div>
@@ -552,7 +567,18 @@ h1,h2,h3{font-family:'Playfair Display',serif;}
   <div class="showdown-box">
     <h2 id="sd-title">Showdown!</h2>
     <div class="sd-results" id="sd-results"></div>
-    <button class="btn btn-gold" style="margin-top:14px;align-self:center;" onclick="closeShowdown()">Continue</button>
+    <div id="sd-footer" style="margin-top:12px;display:flex;flex-direction:column;align-items:center;gap:8px;">
+      <div id="sd-countdown" style="font-family:'Playfair Display',serif;color:rgba(255,255,255,.4);font-size:.85rem;min-height:20px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- GAME OVER OVERLAY -->
+<div class="showdown-overlay" id="gameover-overlay">
+  <div class="showdown-box">
+    <h2 style="color:var(--gold-light);">Game Over</h2>
+    <div id="gameover-results" class="sd-results"></div>
+    <button class="btn btn-gold" style="margin-top:14px;align-self:center;" onclick="document.getElementById('gameover-overlay').classList.remove('show');abortConnect();showScreen('screen-landing');">Return to Lobby</button>
   </div>
 </div>
 
@@ -752,16 +778,17 @@ function createGame() {
   if (vsAI) {
     settings = {
       maxPlayers: 2, gameType: document.getElementById('create-gametype').value,
-      buyinLimit: 1000, timeout: 30, smallBlind: 10, minStart: 1,
+      buyinLimit: 1000, timeout: 30, smallBlind: 10, minStart: 1, showdownSecs: 5,
     };
   } else {
     settings = {
-      maxPlayers: parseInt(document.getElementById('create-maxplayers').value),
-      gameType:   document.getElementById('create-gametype').value,
-      buyinLimit: parseInt(document.getElementById('create-buyin').value),
-      timeout:    parseInt(document.getElementById('create-timeout').value),
-      smallBlind: parseInt(document.getElementById('create-blind').value),
-      minStart:   parseInt(document.getElementById('create-minstart').value),
+      maxPlayers:    parseInt(document.getElementById('create-maxplayers').value),
+      gameType:      document.getElementById('create-gametype').value,
+      buyinLimit:    parseInt(document.getElementById('create-buyin').value),
+      timeout:       parseInt(document.getElementById('create-timeout').value),
+      smallBlind:    parseInt(document.getElementById('create-blind').value),
+      minStart:      parseInt(document.getElementById('create-minstart').value),
+      showdownSecs:  parseInt(document.getElementById('create-showdown-secs').value),
     };
   }
   myRole = 'host';
@@ -1058,8 +1085,13 @@ function handleHostMessage(peerId, msg){
         return;
       }
       const buyIn=Math.min(Math.max(10,msg.buyIn),settings.buyinLimit);
-      gs.seats[seatIdx]={peerId, name:msg.name, stack:buyIn, folded:false, sittingOut:false, bet:0, hand:[]};
-      // Remove from observers
+      const newSeat={peerId, name:msg.name, stack:buyIn, folded:false, sittingOut:false, bet:0, hand:[]};
+      if(gs.phase==='playing'||gs.phase==='showdown'){
+        // Queue to join after current hand
+        newSeat.pendingJoin=true;
+        newSeat.sittingOut=true;
+      }
+      gs.seats[seatIdx]=newSeat;
       gs.observers=gs.observers.filter(o=>o.peerId!==peerId);
       broadcastState();
       break;
@@ -1067,9 +1099,14 @@ function handleHostMessage(peerId, msg){
     case 'STAND_UP':{
       const idx=gs.seats.findIndex(s=>s&&s.peerId===peerId);
       if(idx>=0){
-        gs.observers.push({peerId, name:gs.seats[idx].name});
-        gs.seats[idx]=null;
-        broadcastState();
+        if(gs.phase==='playing'){
+          gs.seats[idx].pendingLeave='stand';
+          broadcastState();
+        } else {
+          gs.observers.push({peerId, name:gs.seats[idx].name});
+          gs.seats[idx]=null;
+          broadcastState();
+        }
       }
       break;
     }
@@ -1091,9 +1128,18 @@ function handleHostMessage(peerId, msg){
       addChatMessage(sender, msg.text);
       hostBroadcast(chatMsg);
       break;
-    case 'LEAVE':
-      handlePlayerDisconnect(peerId);
+    case 'LEAVE':{
+      const lIdx=gs.seats.findIndex(s=>s&&s.peerId===peerId);
+      if(lIdx>=0 && gs.phase==='playing'){
+        gs.seats[lIdx].pendingLeave='leave';
+        broadcastState();
+        // Also disconnect their connection so they can navigate away
+        if(clientConns[peerId]){try{clientConns[peerId].close();}catch(e){} delete clientConns[peerId];}
+      } else {
+        handlePlayerDisconnect(peerId);
+      }
       break;
+    }
   }
 }
 
@@ -1167,6 +1213,15 @@ function handleClientMessage(msg){
     case 'SHOWDOWN':
       showShowdown(msg.results);
       break;
+    case 'SHOWDOWN_COUNTDOWN':
+      updateShowdownCountdown(msg.secs);
+      break;
+    case 'CLOSE_SHOWDOWN':
+      document.getElementById('showdown-overlay').classList.remove('show');
+      break;
+    case 'GAME_OVER':
+      showGameOver(msg.reason, msg.standings);
+      break;
     case 'CHAT':
       addChatMessage(msg.name, msg.text);
       break;
@@ -1198,6 +1253,7 @@ function handlePlayerDisconnect(peerId){
   gs.observers=gs.observers.filter(o=>o.peerId!==peerId);
   toast('A player disconnected','info');
   broadcastStateToAll();
+  if(myRole === 'host') resetIdleTimer();
   // If it was their turn, advance
   if(gs.phase==='playing' && gs.activeSeat===seatIdx){
     advanceTurn();
@@ -1287,6 +1343,9 @@ function startNewHand(){
     startActionTimer();
   }
 
+  // Reset idle timer
+  if(myRole === 'host') resetIdleTimer();
+
   // Switch to game screen for host
   showGameScreen();
 }
@@ -1294,6 +1353,108 @@ function startNewHand(){
 function broadcastToast(msg, kind){
   hostBroadcast({type:'TOAST', msg, kind});
   toast(msg, kind);
+}
+
+// ---- BETWEEN-HAND LIFECYCLE ----
+let showdownTimer = null;
+let idleGameTimer = null;
+
+function scheduleNextHand(){
+  // Only host drives the between-hand logic
+  if(myRole !== 'host') return;
+  clearTimeout(showdownTimer);
+  const secs = settings.showdownSecs || 7;
+  // Broadcast countdown so all clients can display it
+  hostBroadcast({type:'SHOWDOWN_COUNTDOWN', secs});
+  updateShowdownCountdown(secs); // host-side
+  let remaining = secs;
+  showdownTimer = setInterval(() => {
+    remaining--;
+    hostBroadcast({type:'SHOWDOWN_COUNTDOWN', secs: remaining});
+    updateShowdownCountdown(remaining);
+    if(remaining <= 0){
+      clearInterval(showdownTimer);
+      processBetweenHandActions();
+    }
+  }, 1000);
+}
+
+function updateShowdownCountdown(secs){
+  const el = document.getElementById('sd-countdown');
+  if(el) el.textContent = secs > 0 ? `Next hand in ${secs}s…` : 'Starting next hand…';
+}
+
+function processBetweenHandActions(){
+  // Apply pending sit-down / leave / stand-up
+  gs.seats.forEach((seat, i) => {
+    if(!seat) return;
+    if(seat.pendingLeave === 'leave'){
+      gs.observers = gs.observers.filter(o => o.peerId !== seat.peerId);
+      gs.seats[i] = null;
+    } else if(seat.pendingLeave === 'stand'){
+      gs.observers.push({peerId: seat.peerId, name: seat.name});
+      gs.seats[i] = null;
+    } else if(seat.pendingJoin){
+      seat.pendingJoin = false;
+      seat.sittingOut = false;
+    }
+    // Remove busted players (stack = 0)
+    if(gs.seats[i] && gs.seats[i].stack <= 0 && !gs.seats[i].pendingJoin){
+      broadcastToast(`${gs.seats[i].name} is out of chips!`, 'info');
+      gs.seats[i] = null;
+    }
+  });
+
+  // Close showdown overlay on all clients
+  hostBroadcast({type:'CLOSE_SHOWDOWN'});
+  handleClientMessage({type:'CLOSE_SHOWDOWN'});
+
+  // Check if game can continue
+  const canPlay = gs.seats.filter(s => s && !s.sittingOut && s.stack > 0);
+  if(canPlay.length < settings.minStart){
+    // Not enough players — end game
+    endGame('Not enough players to continue.');
+    return;
+  }
+
+  // Reset idle timer
+  clearTimeout(idleGameTimer);
+  idleGameTimer = null;
+
+  startNewHand();
+}
+
+function endGame(reason){
+  clearInterval(timerInterval);
+  clearTimeout(showdownTimer);
+  clearTimeout(idleGameTimer);
+  gs.phase = 'ended';
+
+  // Build final standings
+  const standings = gs.seats
+    .filter(s => s)
+    .sort((a,b) => b.stack - a.stack)
+    .map(s => ({name: s.name, stack: s.stack, isAI: s.isAI}));
+
+  const msg = {type:'GAME_OVER', reason, standings};
+  hostBroadcast(msg);
+  handleClientMessage(msg);
+}
+
+function forceEndGame(){
+  closeModal('modal-ingame-menu');
+  endGame('Host ended the game.');
+}
+
+// Start idle-game watchdog — if no seated active players for 10 min, end game
+function resetIdleTimer(){
+  clearTimeout(idleGameTimer);
+  const active = gs.seats.filter(s => s && s.stack > 0 && !s.sittingOut);
+  if(active.length < settings.minStart){
+    idleGameTimer = setTimeout(() => {
+      if(gs.phase !== 'ended') endGame('Game ended due to inactivity.');
+    }, 10 * 60 * 1000);
+  }
 }
 
 function startActionTimer(){
@@ -1447,6 +1608,7 @@ function endHandFold(winner){
   });
   hostBroadcast({type:'SHOWDOWN', results});
   handleClientMessage({type:'SHOWDOWN', results});
+  scheduleNextHand();
 }
 
 function doShowdown(){
@@ -1518,6 +1680,7 @@ function doShowdown(){
   broadcastStateToAll();
   hostBroadcast({type:'SHOWDOWN', results});
   handleClientMessage({type:'SHOWDOWN', results});
+  scheduleNextHand();
 }
 
 // =================== LOBBY ACTIONS ===================
@@ -1546,17 +1709,27 @@ function standUp(){
 function standUpFromGame(){
   sendToHost({type:'STAND_UP', peerId:myPeerId});
   closeModal('modal-ingame-menu');
+  if(gs.phase === 'playing') toast('You will stand up after this hand.','info');
 }
 
 function leaveGame(){
-  sendToHost({type:'LEAVE', peerId:myPeerId});
-  clearInterval(timerInterval);
-  abortConnect();
-  showScreen('screen-landing');
+  if(gs.phase === 'playing'){
+    sendToHost({type:'LEAVE', peerId:myPeerId});
+    toast('You will leave after this hand.','info');
+    closeModal('modal-ingame-menu');
+    // Navigate away — server will handle pending leave
+    setTimeout(() => { abortConnect(); showScreen('screen-landing'); }, 300);
+  } else {
+    sendToHost({type:'LEAVE', peerId:myPeerId});
+    clearInterval(timerInterval);
+    abortConnect();
+    showScreen('screen-landing');
+  }
 }
 
 function leaveFromGame(){
   leaveGame();
+  closeModal('modal-ingame-menu');
 }
 
 function toggleSitOut(){
@@ -1625,7 +1798,9 @@ function updateLobbyUI(){
       row += `<span class="pr-name">${escHtml(seat.name)}${isMe?' <span style=\"color:var(--gold);font-size:.7rem;\">(you)</span>':''}</span>`;
       row += `<span class="pr-chips">🪙 ${seat.stack.toLocaleString()}</span>`;
       if (isDealer) row += `<span class="pr-badge dealer">Dealer</span>`;
-      if (seat.sittingOut) row += `<span class="pr-badge out">Sitting Out</span>`;
+      if (seat.pendingJoin)  row += `<span class="pr-badge" style="color:#9bceff;border-color:rgba(155,206,255,.3);">⏳ Joining next hand</span>`;
+      if (seat.pendingLeave) row += `<span class="pr-badge" style="color:#f5a623;border-color:rgba(245,166,35,.3);">⏳ Leaving after hand</span>`;
+      else if (seat.sittingOut) row += `<span class="pr-badge out">Sitting Out</span>`;
       row += '</div>';
       list.innerHTML += row;
     });
@@ -1825,6 +2000,8 @@ function renderOvalSeats(){
         html += '</div>';
       }
       if (seat.folded) html += `<div style="font-size:.55rem;color:rgba(255,255,255,.4)">Folded</div>`;
+      if (seat.pendingLeave) html += `<div style="font-size:.52rem;color:#f5a623;text-align:center;">⏳ leaving…</div>`;
+      if (seat.pendingJoin)  html += `<div style="font-size:.52rem;color:#9bceff;text-align:center;">⏳ joining…</div>`;
     } else {
       html += `<div class="ts-name" style="opacity:.25">—</div>`;
     }
@@ -1933,15 +2110,25 @@ function showShowdown(results){
   });
 
   document.getElementById('showdown-overlay').classList.add('show');
-  // Back to lobby after showdown
-  gs.phase='lobby';
+  // phase stays 'showdown' — scheduleNextHand drives transition
 }
 
-function closeShowdown(){
+function showGameOver(reason, standings){
+  // Close showdown if open
   document.getElementById('showdown-overlay').classList.remove('show');
-  if(gs.phase==='lobby'||gs.phase==='showdown'){
-    showLobby();
+  const box = document.getElementById('gameover-results');
+  box.innerHTML = `<div style="color:rgba(255,255,255,.45);font-size:.82rem;margin-bottom:10px;">${escHtml(reason)}</div>`;
+  if(standings && standings.length){
+    standings.forEach((p, i) => {
+      const medal = ['🥇','🥈','🥉'][i] || `${i+1}.`;
+      box.innerHTML += `<div class="sd-player-row${i===0?' winner':''}">
+        <span style="font-size:1.1rem">${medal}</span>
+        <span class="sdr-name">${escHtml(p.name)}${p.isAI?' 🤖':''}</span>
+        <span class="sdr-score">🪙 ${(p.stack||0).toLocaleString()}</span>
+      </div>`;
+    });
   }
+  document.getElementById('gameover-overlay').classList.add('show');
 }
 
 // =================== MODAL / SCREEN HELPERS ===================
@@ -1953,7 +2140,11 @@ function showModal(id){document.getElementById(id).classList.add('show');}
 function closeModal(id){document.getElementById(id).classList.remove('show');}
 function showCreate(){showScreen('screen-create');}
 function showJoin(){showScreen('screen-join');}
-function showInGameMenu(){showModal('modal-ingame-menu');}
+function showInGameMenu(){
+  showModal('modal-ingame-menu');
+  const wrap = document.getElementById('host-endgame-wrap');
+  if(wrap) wrap.style.display = myRole === 'host' ? 'block' : 'none';
+}
 
 
 function addChatMessage(from, text){
